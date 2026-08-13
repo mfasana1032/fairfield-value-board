@@ -1,10 +1,19 @@
 name: Weekly Value Board Update
 
+# Runs automatically every Tuesday morning, and can also be triggered
+# manually from the Actions tab (useful for testing without waiting for
+# the schedule).
+#
+# The cron time below is in UTC. 12:00 UTC = 8:00am Eastern Daylight Time
+# (7:00am Eastern Standard Time in winter). Adjust the "12" if you want a
+# different local time -- GitHub Actions cron does not follow daylight
+# saving automatically.
 on:
   schedule:
-    - cron: "0 12 * * 2"
-  workflow_dispatch: {}
+    - cron: "0 12 * * 2"   # 12:00 UTC every Tuesday
+  workflow_dispatch: {}     # adds a manual "Run workflow" button
 
+# Lets this workflow publish to GitHub Pages.
 permissions:
   contents: read
   pages: write
