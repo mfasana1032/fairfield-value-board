@@ -405,46 +405,40 @@ function posGroupOf(pos) {
   return IDP_POS.has(pos) ? 'IDP' : (pos || 'UNK');
 }
 
-// Normalize a metric to 0-100 SEPARATELY within each position group, so a
-// player is scored against others at his own position. Mirrors the Python
-// in 07_build_final_value_board.py exactly. A player alone in his group (or
-// a group with no spread) lands at a neutral 50.
-function normalizeWithinPosition(getVal, invert) {
-  const groups = {};
-  DATA.forEach((p, i) => {
-    const g = posGroupOf(p.p);
-    (groups[g] = groups[g] || []).push(i);
-  });
-
+// GLOBAL 0-100 normalization (NOT split by position). This matches Python's
+// approach exactly: production already arrives here as VORP (points above
+// each position's real replacement level, computed server-side), and
+// durability/consistency are already fair cross-position units (games
+// played, and coefficient of variation) -- so all three get a single global
+// scale. Only youth uses a separate curve (see above), since age needs an
+// absolute mapping rather than a relative one.
+function normalizeGlobal(getVal, invert) {
+  const vals = DATA.map(getVal).filter(v => v !== null && v !== undefined && !isNaN(v));
   const out = {};
-  for (const g in groups) {
-    const idxs = groups[g];
-    const vals = idxs.map(i => getVal(DATA[i])).filter(v => v !== null && v !== undefined && !isNaN(v));
-    if (vals.length < 2 || (Math.max(...vals) - Math.min(...vals)) === 0) {
-      idxs.forEach(i => {
-        const v = getVal(DATA[i]);
-        out[i] = (v !== null && v !== undefined && !isNaN(v)) ? 50 : null;
-      });
-    } else {
-      const lo = Math.min(...vals), hi = Math.max(...vals);
-      const span = (hi - lo) || 1;
-      idxs.forEach(i => {
-        const v = getVal(DATA[i]);
-        if (v === null || v === undefined || isNaN(v)) { out[i] = null; return; }
-        let score = (v - lo) / span * 100;
-        out[i] = invert ? (100 - score) : score;
-      });
-    }
+  if (vals.length < 2 || (Math.max(...vals) - Math.min(...vals)) === 0) {
+    DATA.forEach((p, i) => {
+      const v = getVal(p);
+      out[i] = (v !== null && v !== undefined && !isNaN(v)) ? 50 : null;
+    });
+    return out;
   }
+  const lo = Math.min(...vals), hi = Math.max(...vals);
+  const span = (hi - lo) || 1;
+  DATA.forEach((p, i) => {
+    const v = getVal(p);
+    if (v === null || v === undefined || isNaN(v)) { out[i] = null; return; }
+    let score = (v - lo) / span * 100;
+    out[i] = invert ? (100 - score) : score;
+  });
   return out;
 }
 
-// Precompute the four component scores ONCE, each within position (lens-independent)
-const prodScore = normalizeWithinPosition(p => p.prod, false);
+// Precompute the four component scores ONCE (lens-independent)
+const prodScore = normalizeGlobal(p => p.prod, false);
 const youthScore = {};
 DATA.forEach((p, i) => { youthScore[i] = youthScoreFromAge(p.age); });
-const durScore = normalizeWithinPosition(p => p.dur, false);
-const conScore = normalizeWithinPosition(p => p.con, true);
+const durScore = normalizeGlobal(p => p.dur, false);
+const conScore = normalizeGlobal(p => p.con, true);
 
 DATA.forEach((p, i) => {
   p._prodS = prodScore[i];
