@@ -379,32 +379,49 @@ let openRow = null;
 
 const IDP_POS = new Set(['LB','DB','DL','DE','DT','CB','S']);
 
-function minMaxNormalize(valuesById, invert) {
-  const vals = Object.values(valuesById).filter(v => v !== null && v !== undefined && !isNaN(v));
-  if (vals.length === 0) return {};
-  const lo = Math.min(...vals), hi = Math.max(...vals);
-  const span = (hi - lo) || 1;
+function posGroupOf(pos) {
+  return IDP_POS.has(pos) ? 'IDP' : (pos || 'UNK');
+}
+
+// Normalize a metric to 0-100 SEPARATELY within each position group, so a
+// player is scored against others at his own position. Mirrors the Python
+// in 07_build_final_value_board.py exactly. A player alone in his group (or
+// a group with no spread) lands at a neutral 50.
+function normalizeWithinPosition(getVal, invert) {
+  const groups = {};
+  DATA.forEach((p, i) => {
+    const g = posGroupOf(p.p);
+    (groups[g] = groups[g] || []).push(i);
+  });
+
   const out = {};
-  for (const [k, v] of Object.entries(valuesById)) {
-    if (v === null || v === undefined || isNaN(v)) { out[k] = null; continue; }
-    let score = (v - lo) / span * 100;
-    out[k] = invert ? (100 - score) : score;
+  for (const g in groups) {
+    const idxs = groups[g];
+    const vals = idxs.map(i => getVal(DATA[i])).filter(v => v !== null && v !== undefined && !isNaN(v));
+    if (vals.length < 2 || (Math.max(...vals) - Math.min(...vals)) === 0) {
+      idxs.forEach(i => {
+        const v = getVal(DATA[i]);
+        out[i] = (v !== null && v !== undefined && !isNaN(v)) ? 50 : null;
+      });
+    } else {
+      const lo = Math.min(...vals), hi = Math.max(...vals);
+      const span = (hi - lo) || 1;
+      idxs.forEach(i => {
+        const v = getVal(DATA[i]);
+        if (v === null || v === undefined || isNaN(v)) { out[i] = null; return; }
+        let score = (v - lo) / span * 100;
+        out[i] = invert ? (100 - score) : score;
+      });
+    }
   }
   return out;
 }
 
-// Precompute the four component percentile scores ONCE (lens-independent)
-const prodById = {}, ageById = {}, durById = {}, conById = {};
-DATA.forEach((p, i) => {
-  prodById[i] = p.prod;
-  ageById[i] = p.age;
-  durById[i] = p.dur;
-  conById[i] = p.con;
-});
-const prodScore = minMaxNormalize(prodById, false);
-const youthScore = minMaxNormalize(ageById, true);
-const durScore = minMaxNormalize(durById, false);
-const conScore = minMaxNormalize(conById, true);
+// Precompute the four component scores ONCE, each within position (lens-independent)
+const prodScore = normalizeWithinPosition(p => p.prod, false);
+const youthScore = normalizeWithinPosition(p => p.age, true);
+const durScore = normalizeWithinPosition(p => p.dur, false);
+const conScore = normalizeWithinPosition(p => p.con, true);
 
 DATA.forEach((p, i) => {
   p._prodS = prodScore[i];
