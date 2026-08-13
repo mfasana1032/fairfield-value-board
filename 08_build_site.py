@@ -5,10 +5,11 @@ Run this from: C:\\Users\\micha\\OneDrive\\Python\\Rndom\\Fantasy Football
 
 What this does:
   Turns data/value_board_FINAL.csv and data/pick_values.csv into a
-  ready-to-publish website: a site/ folder containing index.html (the
-  value board), trade.html (the trade builder), players_data.js, and
-  picks_data.js. Point GitHub Pages at the site/ folder and this becomes
-  the live, shareable link the whole league uses.
+  ready-to-publish website: a site/ folder containing index.html (value
+  board + trade builder, toggled with a tab -- one page, no navigation
+  between them), players_data.js, and picks_data.js. Point GitHub Pages
+  at the site/ folder and this becomes the live, shareable link the
+  whole league uses.
 
   This is the same site every league member has been using -- this script
   just automates the "turn today's data into a website" step so it can
@@ -16,8 +17,7 @@ What this does:
 
 BEFORE RUNNING:
   Run 01, 02, 03, 04, 06, 07, and 09 first, in that order.
-  Needs template.html AND trade_template.html to exist in the same
-  folder as this script.
+  Needs template.html to exist in the same folder as this script.
 """
 
 import csv
@@ -29,7 +29,6 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 DATA_DIR = SCRIPT_DIR / "data"
 SITE_DIR = SCRIPT_DIR / "site"
 TEMPLATE_PATH = SCRIPT_DIR / "template.html"
-TRADE_TEMPLATE_PATH = SCRIPT_DIR / "trade_template.html"
 
 
 def num(v):
@@ -84,12 +83,11 @@ def main():
     shutil.copy(TEMPLATE_PATH, SITE_DIR / "index.html")
 
     # ------------------------------------------------------------
-    # Trade builder page (optional -- only built if the pick values
-    # and trade template both exist, so this script still works fine
-    # before the trade tool is added to a repo)
+    # Pick values (optional -- the trade builder tab just shows an
+    # empty pick list if this isn't available yet; nothing breaks)
     # ------------------------------------------------------------
     pick_csv = DATA_DIR / "pick_values.csv"
-    if pick_csv.exists() and TRADE_TEMPLATE_PATH.exists():
+    if pick_csv.exists():
         print("Reading pick values...")
         with open(pick_csv, "r", encoding="utf-8", newline="") as f:
             pick_rows = list(csv.DictReader(f))
@@ -111,11 +109,11 @@ def main():
         picks_js = "const PICKS = " + json.dumps(picks, separators=(",", ":")) + ";"
         with open(SITE_DIR / "picks_data.js", "w", encoding="utf-8") as f:
             f.write(picks_js)
-
-        print("Copying trade_template.html -> site/trade.html...")
-        shutil.copy(TRADE_TEMPLATE_PATH, SITE_DIR / "trade.html")
     else:
-        print("Skipping trade builder page (pick_values.csv or trade_template.html not found yet).")
+        print("No pick_values.csv found yet -- trade builder's pick picker will be empty "
+              "until 09_build_pick_values.py has been run.")
+        with open(SITE_DIR / "picks_data.js", "w", encoding="utf-8") as f:
+            f.write("const PICKS = [];")
 
     print(f"\nDone. Site ready in {SITE_DIR}")
     print("If running locally, open site/index.html in a browser to preview.")
