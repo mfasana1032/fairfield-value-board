@@ -171,8 +171,23 @@ def main():
             weighted_value = sum(
                 available_ppg[s] * (YEAR_WEIGHTS[s] / weight_sum) for s in available_ppg
             )
+            n_years = len(available_ppg)
+
+            # Small-sample confidence discount. A player with only one season
+            # of data is a much shakier read than one with three, so we gently
+            # shrink thin-sample production toward a low baseline rather than
+            # trusting a single year at full face value. 3 years = full trust
+            # (no discount); 2 years = mild; 1 year = larger. This keeps a
+            # genuinely great rookie ranked well, but stops a middling rookie
+            # season from being treated as equal to a proven multi-year track
+            # record.
+            CONFIDENCE = {1: 0.75, 2: 0.90, 3: 1.00}
+            conf = CONFIDENCE.get(n_years, 1.00)
+            SHRINK_BASELINE = 4.0  # a low PPG anchor to pull thin samples toward
+            weighted_value = SHRINK_BASELINE + (weighted_value - SHRINK_BASELINE) * conf
+
             row["weighted_value"] = round(weighted_value, 2)
-            row["years_of_data"] = len(available_ppg)
+            row["years_of_data"] = n_years
         else:
             row["weighted_value"] = ""
             row["years_of_data"] = 0
