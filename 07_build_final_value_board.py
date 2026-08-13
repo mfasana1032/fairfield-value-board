@@ -257,8 +257,19 @@ def compute_weekly_consistency():
     stdev makes this fairly comparable ACROSS positions -- a QB who scores
     25 +/- 5 and a TE who scores 8 +/- 1.6 have the same relative
     consistency (20%), even though their raw point swings are very
-    different sizes. Lower CoV = more consistent. Returns
-    {player_id: cv_or_None}.
+    different sizes. Lower CoV = more consistent.
+
+    SMALL-SAMPLE DISCOUNT: a CV computed from only a handful of weeks is
+    just as unreliable as production computed from one season -- a rookie
+    who's only had 5 good weeks can look artificially "rock solid" purely
+    from a short sample, the same way a hot one-year stretch used to look
+    like elite production before that discount was added. So a player's
+    real CV is blended toward the LEAGUE-WIDE AVERAGE CV, with the blend
+    weighted by how many real weeks of history back it up -- full trust in
+    the real number once there's about a season's worth of data (16+
+    weeks), heavily blended toward the average with very little history.
+
+    Returns {player_id: cv_or_None}.
     """
     weekly_points = {}  # player_id -> list of weekly points
     if not HISTORY_DIR.exists():
@@ -276,14 +287,31 @@ def compute_weekly_consistency():
                 for pid, pts in players_points.items():
                     weekly_points.setdefault(pid, []).append(pts)
 
-    out = {}
+    # First pass: raw CV + week count for everyone with enough sample to compute anything
+    raw_cv = {}
+    weeks_count = {}
     for pid, pts_list in weekly_points.items():
-        if len(pts_list) >= 4:  # need a reasonable sample to say anything about consistency
+        weeks_count[pid] = len(pts_list)
+        if len(pts_list) >= 4:
             mean = statistics.mean(pts_list)
             stdev = statistics.stdev(pts_list)
-            out[pid] = round(stdev / mean, 3) if mean > 0.5 else None
+            raw_cv[pid] = (stdev / mean) if mean > 0.5 else None
         else:
+            raw_cv[pid] = None
+
+    real_cvs = [v for v in raw_cv.values() if v is not None]
+    pool_mean_cv = statistics.mean(real_cvs) if real_cvs else 1.0
+    FULL_TRUST_WEEKS = 16  # roughly one season of real history
+
+    out = {}
+    for pid in weekly_points:
+        cv = raw_cv.get(pid)
+        if cv is None:
             out[pid] = None
+            continue
+        confidence = min(weeks_count[pid] / FULL_TRUST_WEEKS, 1.0)
+        blended = pool_mean_cv + (cv - pool_mean_cv) * confidence
+        out[pid] = round(blended, 3)
     return out
 
 
