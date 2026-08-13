@@ -74,6 +74,19 @@ def main():
 
     SITE_DIR.mkdir(parents=True, exist_ok=True)
 
+    # Clean up stale files from earlier versions of this pipeline that this
+    # script no longer produces (e.g. the old separate trade.html, before
+    # the trade builder was merged into index.html as a tab). Without this,
+    # an old file can keep sitting live on the server forever, since Pages
+    # just serves whatever's already there -- this script only ever ADDED
+    # files before, never removed ones it stopped generating.
+    stale_files = ["trade.html"]
+    for name in stale_files:
+        stale_path = SITE_DIR / name
+        if stale_path.exists():
+            stale_path.unlink()
+            print(f"Removed stale {name} (no longer used -- merged into index.html).")
+
     print(f"Writing players_data.js ({len(players)} players)...")
     data_js = "const PLAYERS = " + json.dumps(players, separators=(",", ":")) + ";"
     with open(SITE_DIR / "players_data.js", "w", encoding="utf-8") as f:
