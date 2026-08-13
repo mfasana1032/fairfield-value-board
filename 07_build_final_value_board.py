@@ -62,10 +62,12 @@ HISTORY_DIR = DATA_DIR / "history"
 LENS = "balanced"   # "balanced" | "contender" | "rebuild"
 
 WEIGHT_PRESETS = {
-    # production, age (youth), durability, consistency -- must sum to 1.0
-    "balanced":  {"production": 0.56, "age": 0.14, "durability": 0.15, "consistency": 0.15},
-    "contender": {"production": 0.68, "age": 0.04, "durability": 0.14, "consistency": 0.14},
-    "rebuild":   {"production": 0.34, "age": 0.36, "durability": 0.15, "consistency": 0.15},
+    # production > consistency > age > durability (durability kept low since it
+    # partly overlaps consistency -- an injury-prone player already loses points
+    # on consistency and production). Must sum to 1.0.
+    "balanced":  {"production": 0.60, "consistency": 0.18, "age": 0.14, "durability": 0.08},
+    "contender": {"production": 0.68, "consistency": 0.18, "age": 0.06, "durability": 0.08},
+    "rebuild":   {"production": 0.42, "consistency": 0.14, "age": 0.36, "durability": 0.08},
 }
 
 AGE_REFERENCE_DATE = date(2026, 9, 1)  # roughly the 2026 season start
