@@ -63,12 +63,53 @@ LENS = "balanced"   # "balanced" | "contender" | "rebuild"
 
 WEIGHT_PRESETS = {
     # production, age (youth), durability, consistency -- must sum to 1.0
-    "balanced":  {"production": 0.50, "age": 0.20, "durability": 0.15, "consistency": 0.15},
-    "contender": {"production": 0.65, "age": 0.05, "durability": 0.15, "consistency": 0.15},
-    "rebuild":   {"production": 0.30, "age": 0.40, "durability": 0.15, "consistency": 0.15},
+    "balanced":  {"production": 0.56, "age": 0.14, "durability": 0.15, "consistency": 0.15},
+    "contender": {"production": 0.68, "age": 0.04, "durability": 0.14, "consistency": 0.14},
+    "rebuild":   {"production": 0.34, "age": 0.36, "durability": 0.15, "consistency": 0.15},
 }
 
 AGE_REFERENCE_DATE = date(2026, 9, 1)  # roughly the 2026 season start
+
+# ---- Youth curve --------------------------------------------------------
+# Youth is NOT scored as a raw 0-100 linear scale, because that made the
+# single youngest player a runaway 100 and turned "being 22 instead of 24"
+# into a huge, football-irrelevant score swing. Instead, age maps to a
+# youth score through an explicit curve tuned to the real age distribution
+# (almost everyone is 22-33): young players cluster near the top with only
+# small gaps between them, and the score only drops meaningfully as players
+# age into real dynasty decline. Anchors are (age, youth_score); anything
+# between anchors is linearly interpolated, and anything outside is clamped.
+YOUTH_CURVE = [
+    (22.0, 100.0),
+    (24.0, 92.0),
+    (25.0, 88.0),
+    (27.0, 74.0),
+    (28.0, 62.0),
+    (29.0, 50.0),
+    (30.0, 40.0),
+    (31.0, 30.0),
+    (32.0, 22.0),
+    (34.0, 12.0),
+    (37.0, 6.0),
+]
+
+def youth_score_from_age(age):
+    """Map a real age to a 0-100 youth score via the YOUTH_CURVE (piecewise
+    linear, clamped at both ends). Returns None if age is missing."""
+    if age is None:
+        return None
+    lo_age, lo_score = YOUTH_CURVE[0]
+    hi_age, hi_score = YOUTH_CURVE[-1]
+    if age <= lo_age:
+        return lo_score
+    if age >= hi_age:
+        return hi_score
+    for (a1, s1), (a2, s2) in zip(YOUTH_CURVE, YOUTH_CURVE[1:]):
+        if a1 <= age <= a2:
+            frac = (age - a1) / (a2 - a1)
+            return round(s1 + frac * (s2 - s1), 1)
+    return hi_score
+
 
 # Known Sleeper-name -> nflverse-name mismatches that can't be solved by
 # accent-stripping or suffix-trimming alone -- real nicknames vs. formal
@@ -302,9 +343,12 @@ def main():
     # ------------------------------------------------------------
     print("Computing composite dynasty_score (scored within position groups)...")
     prod_scores = normalize_within_position(board, lambda r: to_float(r.get("weighted_value")))
-    youth_scores = normalize_within_position(board, lambda r: to_float(r.get("age")), invert=True)
     dur_scores = normalize_within_position(board, lambda r: to_float(r.get("avg_games_played")))
     con_scores = normalize_within_position(board, lambda r: to_float(r.get("weekly_consistency_stdev")), invert=True)
+    # Youth uses the absolute age CURVE, not within-position normalization --
+    # being 22 means "young" regardless of position, and the curve prevents
+    # the single youngest player from running away with a perfect score.
+    youth_scores = {r["player_id"]: youth_score_from_age(to_float(r.get("age"))) for r in board}
 
     for row in board:
         pid = row["player_id"]
