@@ -91,6 +91,7 @@ def aggregate_player_season(weekly_rows):
         "games": 0, "targets": 0.0, "target_share_sum": 0.0,
         "air_yards_share_sum": 0.0, "wopr_sum": 0.0,
         "receiving_epa_sum": 0.0, "rushing_epa_sum": 0.0, "passing_epa_sum": 0.0,
+        "carries_sum": 0.0, "rushing_yards_sum": 0.0, "passing_yards_sum": 0.0,
         "name": "", "position": "", "team": "",
     })
     for row in weekly_rows:
@@ -108,6 +109,9 @@ def aggregate_player_season(weekly_rows):
         b["receiving_epa_sum"] += to_float(row.get("receiving_epa"))
         b["rushing_epa_sum"] += to_float(row.get("rushing_epa"))
         b["passing_epa_sum"] += to_float(row.get("passing_epa"))
+        b["carries_sum"] += to_float(row.get("carries"))
+        b["rushing_yards_sum"] += to_float(row.get("rushing_yards"))
+        b["passing_yards_sum"] += to_float(row.get("passing_yards"))
 
     out = []
     for (season, name), b in buckets.items():
@@ -125,6 +129,9 @@ def aggregate_player_season(weekly_rows):
             "receiving_epa_per_game": round(b["receiving_epa_sum"] / games, 3),
             "rushing_epa_per_game": round(b["rushing_epa_sum"] / games, 3),
             "passing_epa_per_game": round(b["passing_epa_sum"] / games, 3),
+            "carries_per_game": round(b["carries_sum"] / games, 1),
+            "rushing_yards_per_game": round(b["rushing_yards_sum"] / games, 1),
+            "passing_yards_per_game": round(b["passing_yards_sum"] / games, 1),
         })
     return out
 
@@ -215,7 +222,8 @@ def main():
         player_season,
         ["season", "player_name", "position", "nfl_team", "games", "target_share",
          "air_yards_share", "wopr", "receiving_epa_per_game", "rushing_epa_per_game",
-         "passing_epa_per_game"],
+         "passing_epa_per_game", "carries_per_game", "rushing_yards_per_game",
+         "passing_yards_per_game"],
         NFLVERSE_DIR / "player_context_by_season.csv",
     )
 
