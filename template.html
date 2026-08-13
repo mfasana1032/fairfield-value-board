@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Fairfield Dynasty · Value Board</title>
+<title>Fairfield Dynasty · Trade Builder</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
 
@@ -11,6 +11,7 @@
     --bg: #08090B;
     --row: #0E1013;
     --row-alt: #0B0D0F;
+    --panel: #101317;
     --line: #1C2024;
     --cyan: #2DE0FF;
     --cyan-dim: #0F8DA8;
@@ -22,188 +23,225 @@
     --pos-wr: #C77DFF;
     --pos-te: #2DE0FF;
     --pos-idp: #FF6B8B;
+    --pos-pick: #6BFFA8;
+    --win: #2DE0FF;
+    --lose: #FF6B6B;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-
-  html, body {
-    background: var(--bg);
-    color: var(--ink);
-    font-family: 'Inter', sans-serif;
-    height: 100%;
-    overscroll-behavior-y: contain;
-  }
+  html, body { background: var(--bg); color: var(--ink); font-family: 'Inter', sans-serif; height: 100%; overscroll-behavior-y: contain; }
   body { padding-bottom: env(safe-area-inset-bottom); }
   .mono { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
 
   header {
     position: sticky; top: 0; z-index: 20;
-    background: rgba(8,9,11,0.92);
-    backdrop-filter: blur(8px);
-    padding: calc(env(safe-area-inset-top) + 12px) 14px 10px;
+    background: rgba(8,9,11,0.94); backdrop-filter: blur(8px);
+    padding: calc(env(safe-area-inset-top) + 12px) 14px 12px;
     border-bottom: 1px solid var(--line);
   }
-  .ticker-row {
-    display: flex; align-items: baseline; gap: 8px;
-    margin-bottom: 10px;
+  .navlink {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--cyan);
+    text-decoration: none; margin-bottom: 10px;
   }
+  .ticker-row { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
   .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
-  .eyebrow {
-    font-family: 'IBM Plex Mono', monospace; font-size: 10px;
-    letter-spacing: 0.16em; text-transform: uppercase; color: var(--cyan);
-  }
-  h1 {
-    font-weight: 800; font-size: 21px; letter-spacing: -0.01em;
-    margin-bottom: 10px;
-  }
-  .weights-caption {
-    font-family: 'IBM Plex Mono', monospace; font-size: 10px;
-    color: var(--muted2); margin-bottom: 10px;
+  .eyebrow { font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--cyan); }
+  h1 { font-weight: 800; font-size: 21px; letter-spacing: -0.01em; margin-bottom: 4px; }
+  .subtext { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--muted2); }
+
+  main { padding: 14px; }
+
+  .teamselect-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  .teamselect { display: flex; flex-direction: column; gap: 4px; }
+  .teamselect label { font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  select.teampick {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+    color: var(--ink); font-family: 'Inter', sans-serif; font-weight: 600; font-size: 13.5px; padding: 10px 8px;
   }
 
-  .searchrow { display: flex; gap: 8px; margin-bottom: 8px; }
-  .searchbox {
-    flex: 1; background: var(--row); border: 1px solid var(--line); border-radius: 6px;
-    padding: 9px 11px; color: var(--ink); font-family: 'Inter', sans-serif; font-size: 13.5px;
+  .side {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    margin-bottom: 12px; overflow: hidden;
   }
-  .searchbox::placeholder { color: var(--muted2); }
-  .searchbox:focus { outline: 1px solid var(--cyan-dim); outline-offset: -1px; }
-  select {
-    background: var(--row); border: 1px solid var(--line); border-radius: 6px;
-    color: var(--ink); font-family: 'Inter', sans-serif; font-size: 12.5px; padding: 9px 6px;
+  .side-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 14px; border-bottom: 1px solid var(--line);
   }
+  .side-title { font-weight: 700; font-size: 14px; }
+  .side-title .lbl { font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; color: var(--muted); text-transform: uppercase; display: block; margin-bottom: 2px; }
+  .side-total { font-family: 'IBM Plex Mono', monospace; font-weight: 700; font-size: 18px; color: var(--cyan); }
 
-  .chiprow { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
-  .chiprow::-webkit-scrollbar { display: none; }
-  .chip {
-    flex-shrink: 0; appearance: none; border: 1px solid var(--line); background: var(--row);
-    color: var(--muted); font-family: 'IBM Plex Mono', monospace; font-size: 11px;
-    padding: 6px 11px; border-radius: 4px;
-  }
-  .chip.active { background: var(--cyan); border-color: var(--cyan); color: #032027; font-weight: 700; }
-
-  .colheader {
-    display: grid;
-    grid-template-columns: 28px 34px 1fr 52px 14px;
-    gap: 8px;
-    padding: 8px 14px 6px;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 9.5px;
-    color: var(--muted2);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
+  .assetlist { padding: 6px 10px; }
+  .asset-row {
+    display: flex; align-items: center; gap: 8px; padding: 8px 4px;
     border-bottom: 1px solid var(--line);
   }
-  .colheader .r { text-align: right; }
-
-  #list { padding-bottom: 40px; }
-
-  .row { border-bottom: 1px solid var(--line); }
-  .row:nth-child(even) .rowmain { background: var(--row-alt); }
-
-  .rowmain {
-    display: grid;
-    grid-template-columns: 28px 34px 1fr 52px 14px;
-    gap: 8px;
-    align-items: center;
-    padding: 10px 14px;
+  .asset-row:last-child { border-bottom: none; }
+  .asset-pill {
+    font-family: 'IBM Plex Mono', monospace; font-weight: 700; font-size: 9.5px;
+    padding: 2px 6px; border-radius: 3px; color: #06090B; flex-shrink: 0; min-width: 30px; text-align: center;
   }
-  .rank { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--muted2); }
+  .pos-QB { background: var(--pos-qb); } .pos-RB { background: var(--pos-rb); }
+  .pos-WR { background: var(--pos-wr); } .pos-TE { background: var(--pos-te); }
+  .pos-IDP { background: var(--pos-idp); } .pos-PICK { background: var(--pos-pick); }
+  .asset-name { flex: 1; font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .asset-value { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--ink); font-weight: 600; }
+  .asset-value.editable { border-bottom: 1px dotted var(--muted2); cursor: pointer; }
+  .asset-remove { color: var(--muted2); font-size: 16px; padding: 2px 6px; }
 
-  .pos-pill {
-    font-family: 'IBM Plex Mono', monospace; font-weight: 700; font-size: 10px;
-    text-align: center; padding: 2px 0; border-radius: 3px; color: #06090B;
-  }
-  .pos-QB { background: var(--pos-qb); }
-  .pos-RB { background: var(--pos-rb); }
-  .pos-WR { background: var(--pos-wr); }
-  .pos-TE { background: var(--pos-te); }
-  .pos-IDP { background: var(--pos-idp); }
+  .empty-side { padding: 20px 14px; text-align: center; color: var(--muted2); font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
 
-  .info { min-width: 0; }
-  .pname {
-    font-size: 14px; font-weight: 600;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-  .psub {
-    font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--muted);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    margin-top: 1px;
+  .addbtns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px; }
+  .addbtn {
+    background: var(--row); border: 1px dashed var(--line); border-radius: 6px;
+    color: var(--cyan); font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; font-weight: 600;
+    padding: 10px; text-align: center;
   }
 
-  .score {
-    font-family: 'IBM Plex Mono', monospace; font-weight: 700; font-size: 16px;
-    text-align: right;
+  .impact { padding: 4px 12px 12px; }
+  .impact:empty { padding: 0; }
+  .impact-head { padding: 6px 2px 8px; border-top: 1px solid var(--line); margin-top: 4px; }
+  .impact-head .lbl { font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: var(--muted2); text-transform: uppercase; letter-spacing: 0.05em; }
+  .impact-cols {
+    display: grid; grid-template-columns: 34px 44px 40px 18px 40px;
+    gap: 4px; padding: 2px; font-family: 'IBM Plex Mono', monospace; font-size: 8.5px;
+    color: var(--muted2); text-transform: uppercase;
   }
-  .score.tier-elite { color: var(--cyan); }
-  .score.tier-solid { color: #8FE8F5; }
-  .score.tier-deep { color: var(--muted); }
-  .score.tier-none { color: var(--muted2); font-size: 13px; }
-
-  .chev { color: var(--muted2); font-size: 10px; transition: transform 0.15s; }
-  .row.open .chev { transform: rotate(90deg); color: var(--cyan); }
-
-  .detail { display: none; padding: 4px 14px 16px; background: var(--row-alt); }
-  .row.open .detail { display: block; }
-
-  .bars { margin-top: 8px; }
-  .barline { display: grid; grid-template-columns: 76px 1fr 30px; align-items: center; gap: 8px; margin-bottom: 6px; }
-  .barlabel { font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
-  .bartrack { height: 5px; background: var(--bg); border-radius: 2px; overflow: hidden; }
-  .barfill { height: 100%; background: var(--cyan); border-radius: 2px; }
-  .barval { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--muted); text-align: right; }
-
-  .ctx {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px;
-    margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line);
+  .impact-colhead { text-align: center; }
+  .impact-row {
+    display: grid; grid-template-columns: 34px 44px 40px 18px 40px;
+    gap: 4px; align-items: center; padding: 4px 2px;
   }
-  .ctxitem { font-size: 11px; color: var(--muted); }
-  .ctxitem b { color: var(--ink); font-family: 'IBM Plex Mono', monospace; font-weight: 500; }
+  .impact-pos { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--muted); font-weight: 600; }
+  .impact-count { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--muted); text-align: center; }
+  .impact-avg { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--ink); text-align: center; }
+  .impact-arrow { text-align: center; font-size: 10px; }
+  .impact-arrow.up { color: var(--win); }
+  .impact-arrow.down { color: var(--lose); }
+  .impact-arrow.flat { color: var(--muted2); }
 
-  .nodata-note { margin-top: 8px; font-size: 11px; color: var(--muted); font-style: italic; }
-
-  .empty { text-align: center; padding: 60px 20px; color: var(--muted2); font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
-
-  footer {
-    text-align: center; padding: 14px 20px 30px; font-size: 10px; color: var(--muted2);
-    font-family: 'IBM Plex Mono', monospace; line-height: 1.6;
+  .verdict {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 16px 14px; text-align: center; margin-top: 8px;
   }
+  .verdict-label { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
+  .verdict-verb { font-weight: 800; font-size: 20px; margin-bottom: 4px; }
+  .verdict-verb.even { color: var(--ink); }
+  .verdict-verb.slight { color: var(--cyan); }
+  .verdict-verb.clear { color: var(--win); }
+  .verdict-verb.lopsided { color: var(--lose); }
+  .verdict-sub { font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: var(--muted); }
+
+  /* Picker overlay */
+  .overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 50;
+  }
+  .overlay.open { display: block; }
+  .sheet {
+    position: absolute; bottom: 0; left: 0; right: 0; max-height: 82vh;
+    background: var(--bg); border-top: 1px solid var(--line); border-radius: 14px 14px 0 0;
+    display: flex; flex-direction: column;
+  }
+  .sheet-head { padding: 14px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; }
+  .sheet-title { font-weight: 700; font-size: 15px; }
+  .sheet-close { color: var(--muted); font-size: 20px; padding: 4px 8px; }
+  .sheet-search {
+    margin: 10px 14px; background: var(--row); border: 1px solid var(--line); border-radius: 6px;
+    padding: 9px 11px; color: var(--ink); font-family: 'Inter', sans-serif; font-size: 13.5px; width: calc(100% - 28px);
+  }
+  .sheet-list { overflow-y: auto; padding: 0 10px 20px; }
+  .sheet-item {
+    display: flex; align-items: center; gap: 8px; padding: 10px 6px;
+    border-bottom: 1px solid var(--line);
+  }
+  .sheet-item-name { flex: 1; font-size: 13.5px; min-width: 0; }
+  .sheet-item-sub { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--muted); }
+  .sheet-item-val { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--cyan); font-weight: 600; }
+  .sheet-empty { text-align: center; padding: 40px 20px; color: var(--muted2); font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
+
+  footer { text-align: center; padding: 14px 20px 30px; font-size: 10px; color: var(--muted2); font-family: 'IBM Plex Mono', monospace; line-height: 1.6; }
 </style>
 </head>
 <body>
 
 <header>
-  <div class="ticker-row">
-    <span class="dot"></span>
-    <span class="eyebrow">Fairfield Dynasty · Live</span>
-  </div>
-  <h1>Value Board</h1>
-  <a href="trade.html" style="display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#2DE0FF;text-decoration:none;margin-bottom:8px;">Trade Builder →</a>
-  <div class="weights-caption">production 65 · consistency 22 · durability 8 · age 5</div>
-
-  <div class="searchrow">
-    <input class="searchbox" id="search" type="text" placeholder="Search player…" autocomplete="off">
-    <select id="teamFilter"><option value="">All Teams</option></select>
-  </div>
-  <div class="chiprow" id="posChips"></div>
+  <a class="navlink" href="index.html">← Value Board</a>
+  <div class="ticker-row"><span class="dot"></span><span class="eyebrow">Fairfield Dynasty</span></div>
+  <h1>Trade Builder</h1>
+  <div class="subtext">Pick two teams, add what each side sends, see who wins.</div>
 </header>
 
-<div class="colheader">
-  <div>#</div><div>POS</div><div>PLAYER</div><div class="r">SCORE</div><div></div>
-</div>
-<div id="list"></div>
+<main>
+  <div class="teamselect-row">
+    <div class="teamselect">
+      <label>Team A</label>
+      <select class="teampick" id="teamA"><option value="">Select team…</option></select>
+    </div>
+    <div class="teamselect">
+      <label>Team B</label>
+      <select class="teampick" id="teamB"><option value="">Select team…</option></select>
+    </div>
+  </div>
+
+  <div class="side" id="sideA">
+    <div class="side-head">
+      <div class="side-title"><span class="lbl" id="labelA">Team A</span>Sends</div>
+      <div class="side-total mono" id="totalA">0</div>
+    </div>
+    <div class="assetlist" id="listA"></div>
+    <div class="addbtns">
+      <div class="addbtn" data-side="A" data-kind="player">+ Add Player</div>
+      <div class="addbtn" data-side="A" data-kind="pick">+ Add Pick</div>
+    </div>
+    <div class="impact" id="impactA"></div>
+  </div>
+
+  <div class="side" id="sideB">
+    <div class="side-head">
+      <div class="side-title"><span class="lbl" id="labelB">Team B</span>Sends</div>
+      <div class="side-total mono" id="totalB">0</div>
+    </div>
+    <div class="assetlist" id="listB"></div>
+    <div class="addbtns">
+      <div class="addbtn" data-side="B" data-kind="player">+ Add Player</div>
+      <div class="addbtn" data-side="B" data-kind="pick">+ Add Pick</div>
+    </div>
+    <div class="impact" id="impactB"></div>
+  </div>
+
+  <div class="verdict" id="verdict">
+    <div class="verdict-label">Verdict</div>
+    <div class="verdict-verb even" id="verdictVerb">Add assets to see a verdict</div>
+    <div class="verdict-sub" id="verdictSub"></div>
+  </div>
+</main>
 
 <footer>
-  Score blends production, consistency, durability, and age — production and consistency weighted heaviest.<br>
-  Tap any row for the full breakdown.
+  Player values are this tool's dynasty scores. Pick values come from real draft order<br>
+  (this year) or real current standings (next year) where known — see the value board for<br>
+  how player scores are built. Nothing here executes a trade; it's a reference only.
 </footer>
 
+<div class="overlay" id="overlay">
+  <div class="sheet">
+    <div class="sheet-head">
+      <div class="sheet-title" id="sheetTitle">Add asset</div>
+      <div class="sheet-close" id="sheetClose">✕</div>
+    </div>
+    <input class="sheet-search" id="sheetSearch" type="text" placeholder="Search…">
+    <div class="sheet-list" id="sheetList"></div>
+  </div>
+</div>
+
 <script src="players_data.js"></script>
+<script src="picks_data.js"></script>
 <script>
 const DATA = (typeof PLAYERS !== 'undefined') ? PLAYERS : [];
+const PICKDATA = (typeof PICKS !== 'undefined') ? PICKS : [];
 
+// Same scoring logic as the value board -- must match 07_build_final_value_board.py
 const WEIGHTS = {production:0.65, consistency:0.22, durability:0.08, age:0.05};
-
 const YOUTH_CURVE = [
   [22.0,100.0],[24.0,92.0],[25.0,88.0],[27.0,74.0],[28.0,62.0],
   [29.0,50.0],[30.0,40.0],[31.0,30.0],[32.0,22.0],[34.0,12.0],[37.0,6.0]
@@ -215,175 +253,320 @@ function youthScoreFromAge(age) {
   if (age >= hi[0]) return hi[1];
   for (let i=0; i<YOUTH_CURVE.length-1; i++) {
     const [a1,s1] = YOUTH_CURVE[i], [a2,s2] = YOUTH_CURVE[i+1];
-    if (age >= a1 && age <= a2) {
-      const frac = (age-a1)/(a2-a1);
-      return Math.round((s1 + frac*(s2-s1))*10)/10;
-    }
+    if (age >= a1 && age <= a2) { const frac=(age-a1)/(a2-a1); return Math.round((s1+frac*(s2-s1))*10)/10; }
   }
   return hi[1];
 }
-
-let currentPos = 'ALL';
-let currentTeam = '';
-let currentSearch = '';
-
-const IDP_POS = new Set(['LB','DB','DL','DE','DT','CB','S']);
-function posGroupOf(pos) { return IDP_POS.has(pos) ? 'IDP' : (pos || 'UNK'); }
-function posGroup(p) { return posGroupOf(p.p); }
-
 function normalizeGlobal(getVal, invert) {
   const vals = DATA.map(getVal).filter(v => v !== null && v !== undefined && !isNaN(v));
   const out = {};
   if (vals.length < 2 || (Math.max(...vals) - Math.min(...vals)) === 0) {
-    DATA.forEach((p, i) => {
-      const v = getVal(p);
-      out[i] = (v !== null && v !== undefined && !isNaN(v)) ? 50 : null;
-    });
+    DATA.forEach((p, i) => { const v=getVal(p); out[i] = (v!==null&&v!==undefined&&!isNaN(v)) ? 50 : null; });
     return out;
   }
-  const lo = Math.min(...vals), hi = Math.max(...vals);
-  const span = (hi - lo) || 1;
+  const lo = Math.min(...vals), hi = Math.max(...vals), span = (hi-lo)||1;
   DATA.forEach((p, i) => {
     const v = getVal(p);
-    if (v === null || v === undefined || isNaN(v)) { out[i] = null; return; }
-    let score = (v - lo) / span * 100;
-    out[i] = invert ? (100 - score) : score;
+    if (v===null||v===undefined||isNaN(v)) { out[i]=null; return; }
+    let s = (v-lo)/span*100; out[i] = invert ? (100-s) : s;
   });
   return out;
 }
-
-const prodScore = normalizeGlobal(p => p.prod, false);
-const youthScore = {};
-DATA.forEach((p, i) => { youthScore[i] = youthScoreFromAge(p.age); });
-const durScore = normalizeGlobal(p => p.dur, false);
-const conScore = normalizeGlobal(p => p.con, true);
-
-DATA.forEach((p, i) => {
-  p._prodS = prodScore[i]; p._youthS = youthScore[i]; p._durS = durScore[i]; p._conS = conScore[i];
-  p._hasAll = [p._prodS, p._youthS, p._durS, p._conS].every(v => v !== null && v !== undefined);
+const prodScore = normalizeGlobal(p=>p.prod,false);
+const youthScore = {}; DATA.forEach((p,i)=>{youthScore[i]=youthScoreFromAge(p.age);});
+const durScore = normalizeGlobal(p=>p.dur,false);
+const conScore = normalizeGlobal(p=>p.con,true);
+DATA.forEach((p,i)=>{
+  p._prodS=prodScore[i]; p._youthS=youthScore[i]; p._durS=durScore[i]; p._conS=conScore[i];
+  p._hasAll = [p._prodS,p._youthS,p._durS,p._conS].every(v=>v!==null&&v!==undefined);
+  p._score = p._hasAll ? (p._prodS*WEIGHTS.production + p._youthS*WEIGHTS.age + p._durS*WEIGHTS.durability + p._conS*WEIGHTS.consistency) : null;
 });
 
-function computeScore(p) {
-  if (!p._hasAll) return null;
-  const w = WEIGHTS;
-  return p._prodS*w.production + p._youthS*w.age + p._durS*w.durability + p._conS*w.consistency;
-}
+const IDP_POS = new Set(['LB','DB','DL','DE','DT','CB','S']);
+function posGroupOf(pos) { return IDP_POS.has(pos) ? 'IDP' : (pos || 'UNK'); }
 
-function tierFor(score) {
-  if (score === null) return 'none';
-  if (score >= 75) return 'elite';
-  if (score >= 55) return 'solid';
-  return 'deep';
-}
+// ---- State ----
+let sideAssets = { A: [], B: [] };  // each item: {type:'player'|'pick', ref: player-or-pick object}
+let currentPickerSide = null, currentPickerKind = null;
 
+// ---- Team dropdowns ----
 const teams = [...new Set(DATA.map(p => p.ft))].sort();
-const teamSelect = document.getElementById('teamFilter');
-teams.forEach(t => { const o=document.createElement('option'); o.value=t; o.textContent=t; teamSelect.appendChild(o); });
-teamSelect.addEventListener('change', () => { currentTeam = teamSelect.value; render(); });
+['teamA','teamB'].forEach(id => {
+  const sel = document.getElementById(id);
+  teams.forEach(t => { const o=document.createElement('option'); o.value=t; o.textContent=t; sel.appendChild(o); });
+});
+document.getElementById('teamA').addEventListener('change', (e) => {
+  document.getElementById('labelA').textContent = e.target.value || 'Team A';
+  sideAssets.A = []; render();
+});
+document.getElementById('teamB').addEventListener('change', (e) => {
+  document.getElementById('labelB').textContent = e.target.value || 'Team B';
+  sideAssets.B = []; render();
+});
 
-const POS_ORDER = ['ALL','QB','RB','WR','TE','IDP'];
-const chipRow = document.getElementById('posChips');
-POS_ORDER.forEach(pos => {
-  const b = document.createElement('button');
-  b.className = 'chip' + (pos === 'ALL' ? ' active' : '');
-  b.textContent = pos; b.dataset.pos = pos;
-  b.addEventListener('click', () => {
-    currentPos = pos;
-    document.querySelectorAll('.chip').forEach(c => c.classList.toggle('active', c.dataset.pos === pos));
-    render();
+// ---- Add asset flow ----
+document.querySelectorAll('.addbtn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const side = btn.dataset.side, kind = btn.dataset.kind;
+    const teamName = document.getElementById('team'+side).value;
+    if (!teamName) { alert('Pick a team for this side first.'); return; }
+    openPicker(side, kind, teamName);
   });
-  chipRow.appendChild(b);
 });
 
-document.getElementById('search').addEventListener('input', (e) => {
-  currentSearch = e.target.value.trim().toLowerCase();
-  render();
+function openPicker(side, kind, teamName) {
+  currentPickerSide = side; currentPickerKind = kind;
+  document.getElementById('sheetTitle').textContent = kind === 'player'
+    ? `Add player from ${teamName}` : `Add pick from ${teamName}`;
+  document.getElementById('sheetSearch').value = '';
+  renderSheetList(teamName, kind, '');
+  document.getElementById('overlay').classList.add('open');
+  document.getElementById('sheetSearch').focus();
+}
+document.getElementById('sheetClose').addEventListener('click', () => {
+  document.getElementById('overlay').classList.remove('open');
+});
+document.getElementById('overlay').addEventListener('click', (e) => {
+  if (e.target.id === 'overlay') document.getElementById('overlay').classList.remove('open');
+});
+document.getElementById('sheetSearch').addEventListener('input', (e) => {
+  const side = currentPickerSide;
+  const teamName = document.getElementById('team'+side).value;
+  renderSheetList(teamName, currentPickerKind, e.target.value.trim().toLowerCase());
 });
 
-function fmt(v, decimals=1) {
-  if (v === null || v === undefined || v === '' || isNaN(v)) return '—';
-  return Number(v).toFixed(decimals);
+function renderSheetList(teamName, kind, search) {
+  const list = document.getElementById('sheetList');
+  list.innerHTML = '';
+  const alreadyAddedIds = new Set(
+    sideAssets[currentPickerSide].filter(a => a.type === kind).map(a => a.type==='player' ? a.ref.n : a.ref.label)
+  );
+
+  if (kind === 'player') {
+    let items = DATA.filter(p => p.ft === teamName && !alreadyAddedIds.has(p.n));
+    if (search) items = items.filter(p => p.n.toLowerCase().includes(search));
+    items.sort((a,b) => (b._score||0)-(a._score||0));
+    if (items.length === 0) { list.innerHTML = '<div class="sheet-empty">No matching players.</div>'; return; }
+    items.forEach(p => {
+      const row = document.createElement('div');
+      row.className = 'sheet-item';
+      const score = p._score !== null ? Math.round(p._score) : '—';
+      row.innerHTML = `
+        <div class="asset-pill pos-${posGroupOf(p.p)}">${p.p}</div>
+        <div style="flex:1;min-width:0;">
+          <div class="sheet-item-name">${p.n}</div>
+          <div class="sheet-item-sub">${p.t}</div>
+        </div>
+        <div class="sheet-item-val mono">${score}</div>
+      `;
+      row.addEventListener('click', () => { addAsset(currentPickerSide, 'player', p); document.getElementById('overlay').classList.remove('open'); });
+      list.appendChild(row);
+    });
+  } else {
+    let items = PICKDATA.filter(pk => pk.team === teamName && !alreadyAddedIds.has(pk.label));
+    if (search) items = items.filter(pk => pk.label.toLowerCase().includes(search));
+    items.sort((a,b) => b.value - a.value);
+    if (items.length === 0) { list.innerHTML = '<div class="sheet-empty">No available picks.</div>'; return; }
+    items.forEach(pk => {
+      const row = document.createElement('div');
+      row.className = 'sheet-item';
+      row.innerHTML = `
+        <div class="asset-pill pos-PICK">PICK</div>
+        <div style="flex:1;min-width:0;">
+          <div class="sheet-item-name">${pk.label}</div>
+          <div class="sheet-item-sub">${pk.basis.replace(/_/g,' ')}</div>
+        </div>
+        <div class="sheet-item-val mono">${pk.value}</div>
+      `;
+      row.addEventListener('click', () => { addAsset(currentPickerSide, 'pick', pk); document.getElementById('overlay').classList.remove('open'); });
+      list.appendChild(row);
+    });
+  }
 }
 
-function positionContext(p) {
-  const grp = posGroupOf(p.p);
-  const item = (label, val) => (val !== null && val !== undefined && !isNaN(val))
-    ? `<div class="ctxitem">${label} <b>${val}</b></div>` : '';
-  if (grp === 'QB') {
-    return item('Pass yds/game', p.pyg !== null ? fmt(p.pyg, 0) : null)
-         + item('Pass EPA/game', p.pepa !== null ? fmt(p.pepa, 1) : null)
-         + item('Rush yds/game', p.ryg !== null ? fmt(p.ryg, 1) : null);
+function addAsset(side, type, ref) {
+  sideAssets[side].push({ type, ref, overrideValue: null });
+  render();
+}
+function removeAsset(side, idx) {
+  sideAssets[side].splice(idx, 1);
+  render();
+}
+
+function assetValue(a) {
+  if (a.overrideValue !== null) return a.overrideValue;
+  return a.type === 'player' ? (a.ref._score !== null ? a.ref._score : 0) : a.ref.value;
+}
+
+function renderSideList(side) {
+  const listEl = document.getElementById('list'+side);
+  listEl.innerHTML = '';
+  const assets = sideAssets[side];
+  if (assets.length === 0) {
+    listEl.innerHTML = '<div class="empty-side">Nothing added yet</div>';
+    return;
   }
-  if (grp === 'RB') {
-    return item('Carries/game', p.cpg !== null ? fmt(p.cpg, 1) : null)
-         + item('Rush yds/game', p.ryg !== null ? fmt(p.ryg, 1) : null)
-         + (p.ts !== null ? item('Target share', fmt(p.ts*100, 1) + '%') : '');
-  }
-  if (grp === 'WR' || grp === 'TE') {
-    return (p.ts !== null ? item('Target share', fmt(p.ts*100, 1) + '%') : '')
-         + item('WOPR', p.wopr !== null ? fmt(p.wopr, 2) : null);
-  }
-  return '';
+  assets.forEach((a, idx) => {
+    const row = document.createElement('div');
+    row.className = 'asset-row';
+    const val = assetValue(a);
+    if (a.type === 'player') {
+      row.innerHTML = `
+        <div class="asset-pill pos-${posGroupOf(a.ref.p)}">${a.ref.p}</div>
+        <div class="asset-name">${a.ref.n}</div>
+        <div class="asset-value mono editable" data-side="${side}" data-idx="${idx}">${Math.round(val)}</div>
+        <div class="asset-remove" data-side="${side}" data-idx="${idx}">✕</div>
+      `;
+    } else {
+      row.innerHTML = `
+        <div class="asset-pill pos-PICK">PICK</div>
+        <div class="asset-name">${a.ref.label}</div>
+        <div class="asset-value mono editable" data-side="${side}" data-idx="${idx}">${val}</div>
+        <div class="asset-remove" data-side="${side}" data-idx="${idx}">✕</div>
+      `;
+    }
+    listEl.appendChild(row);
+  });
+  listEl.querySelectorAll('.asset-remove').forEach(btn => {
+    btn.addEventListener('click', () => removeAsset(btn.dataset.side, parseInt(btn.dataset.idx)));
+  });
+  listEl.querySelectorAll('.asset-value.editable').forEach(el => {
+    el.addEventListener('click', () => {
+      const side = el.dataset.side, idx = parseInt(el.dataset.idx);
+      const current = assetValue(sideAssets[side][idx]);
+      const input = document.createElement('input');
+      input.type = 'number'; input.value = Math.round(current);
+      input.style.cssText = 'width:48px;background:var(--row);border:1px solid var(--cyan);border-radius:4px;color:var(--ink);font-family:IBM Plex Mono,monospace;font-size:13px;padding:2px 4px;text-align:right;';
+      el.replaceWith(input);
+      input.focus(); input.select();
+      const commit = () => {
+        const v = parseFloat(input.value);
+        sideAssets[side][idx].overrideValue = isNaN(v) ? null : v;
+        render();
+      };
+      input.addEventListener('blur', commit);
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
+    });
+  });
+}
+
+function sideTotal(side) {
+  return sideAssets[side].reduce((sum, a) => sum + assetValue(a), 0);
+}
+
+const POSITIONS = ['QB','RB','WR','TE','IDP'];
+const STARTER_COUNT = {QB:2, RB:3, WR:3, TE:2, IDP:3}; // "top N" that counts as real starting-relevant depth
+
+// Snapshot a team's roster strength by position, optionally simulating a
+// trade by excluding players they'd send and including players they'd
+// receive. Only PLAYER assets affect this -- picks have no real position
+// yet, so they're correctly excluded from every calculation here.
+function rosterSnapshot(teamName, excludeRefs, includeRefs) {
+  const excludeSet = new Set(excludeRefs);
+  let roster = DATA.filter(p => p.ft === teamName && !excludeSet.has(p));
+  roster = roster.concat(includeRefs);
+
+  const byPos = {};
+  POSITIONS.forEach(pos => {
+    const atPos = roster.filter(p => posGroupOf(p.p) === pos && p._score !== null);
+    atPos.sort((a,b) => b._score - a._score);
+    const topN = atPos.slice(0, STARTER_COUNT[pos]);
+    const avg = topN.length > 0 ? topN.reduce((s,p)=>s+p._score,0) / topN.length : null;
+    byPos[pos] = { count: atPos.length, avg: avg };
+  });
+  return byPos;
+}
+
+function renderRosterImpact(side, teamName, ownAssets, otherAssets) {
+  const el = document.getElementById('impact'+side);
+  if (!teamName) { el.innerHTML = ''; return; }
+
+  const sentPlayers = ownAssets.filter(a => a.type==='player').map(a => a.ref);
+  const receivedPlayers = otherAssets.filter(a => a.type==='player').map(a => a.ref);
+
+  const before = rosterSnapshot(teamName, [], []);
+  const after = rosterSnapshot(teamName, sentPlayers, receivedPlayers);
+
+  let hasAnyChange = sentPlayers.length > 0 || receivedPlayers.length > 0;
+
+  let rows = '';
+  POSITIONS.forEach(pos => {
+    const b = before[pos], a = after[pos];
+    const bAvg = b.avg !== null ? Math.round(b.avg) : '—';
+    const aAvg = a.avg !== null ? Math.round(a.avg) : '—';
+    let deltaClass = 'flat', deltaSym = '';
+    if (b.avg !== null && a.avg !== null) {
+      if (a.avg > b.avg + 0.5) { deltaClass = 'up'; deltaSym = '▲'; }
+      else if (a.avg < b.avg - 0.5) { deltaClass = 'down'; deltaSym = '▼'; }
+    } else if (b.avg === null && a.avg !== null) { deltaClass = 'up'; deltaSym = '▲'; }
+    else if (b.avg !== null && a.avg === null) { deltaClass = 'down'; deltaSym = '▼'; }
+
+    rows += `
+      <div class="impact-row">
+        <div class="impact-pos">${pos}</div>
+        <div class="impact-count">${b.count}${a.count !== b.count ? ' → '+a.count : ''}</div>
+        <div class="impact-avg">${bAvg}</div>
+        <div class="impact-arrow ${deltaClass}">${hasAnyChange ? deltaSym : ''}</div>
+        <div class="impact-avg">${aAvg}</div>
+      </div>
+    `;
+  });
+
+  el.innerHTML = `
+    <div class="impact-head">
+      <div class="lbl">Roster Impact — Top-${STARTER_COUNT.RB} Avg Score By Position</div>
+    </div>
+    <div class="impact-cols">
+      <div></div><div class="impact-colhead">DEPTH</div><div class="impact-colhead">BEFORE</div><div></div><div class="impact-colhead">AFTER</div>
+    </div>
+    ${rows}
+  `;
 }
 
 function render() {
-  let filtered = DATA.filter(p => {
-    if (currentPos !== 'ALL' && posGroup(p) !== currentPos) return false;
-    if (currentTeam && p.ft !== currentTeam) return false;
-    if (currentSearch && !p.n.toLowerCase().includes(currentSearch)) return false;
-    return true;
-  });
-  filtered.forEach(p => { p._score = computeScore(p); });
-  filtered.sort((a,b) => (a._score===null?-1:a._score) < (b._score===null?-1:b._score) ? 1 : -1);
+  renderSideList('A'); renderSideList('B');
+  const totalA = sideTotal('A'), totalB = sideTotal('B');
+  document.getElementById('totalA').textContent = Math.round(totalA);
+  document.getElementById('totalB').textContent = Math.round(totalB);
 
-  const list = document.getElementById('list');
-  list.innerHTML = '';
-  if (filtered.length === 0) {
-    list.innerHTML = '<div class="empty">No players match.</div>';
+  const teamAName = document.getElementById('teamA').value;
+  const teamBName = document.getElementById('teamB').value;
+  renderRosterImpact('A', teamAName, sideAssets.A, sideAssets.B);
+  renderRosterImpact('B', teamBName, sideAssets.B, sideAssets.A);
+
+  const verb = document.getElementById('verdictVerb');
+  const sub = document.getElementById('verdictSub');
+
+  if (sideAssets.A.length === 0 && sideAssets.B.length === 0) {
+    verb.className = 'verdict-verb even';
+    verb.textContent = 'Add assets to see a verdict';
+    sub.textContent = '';
     return;
   }
 
-  filtered.forEach((p, idx) => {
-    const tier = tierFor(p._score);
-    const row = document.createElement('div');
-    row.className = 'row';
-    const scoreDisplay = p._score === null ? '—' : Math.round(p._score);
+  // Team A's gain = what they RECEIVE (Team B's total) minus what they SEND (their own total)
+  const gainA = totalB - totalA;
+  const bigger = Math.max(totalA, totalB);
+  const gapPct = bigger > 0 ? Math.abs(totalA - totalB) / bigger * 100 : 0;
 
-    row.innerHTML = `
-      <div class="rowmain">
-        <div class="rank mono">${idx+1}</div>
-        <div class="pos-pill pos-${posGroup(p)}">${p.p}</div>
-        <div class="info">
-          <div class="pname">${p.n}</div>
-          <div class="psub">${p.t} · ${p.ft}</div>
-        </div>
-        <div class="score tier-${tier}">${scoreDisplay}</div>
-        <div class="chev">▶</div>
-      </div>
-      <div class="detail">
-        ${p._hasAll ? `
-        <div class="bars">
-          <div class="barline"><div class="barlabel">Production</div><div class="bartrack"><div class="barfill" style="width:${p._prodS}%"></div></div><div class="barval mono">${Math.round(p._prodS)}</div></div>
-          <div class="barline"><div class="barlabel">Consistency</div><div class="bartrack"><div class="barfill" style="width:${p._conS}%"></div></div><div class="barval mono">${Math.round(p._conS)}</div></div>
-          <div class="barline"><div class="barlabel">Durability</div><div class="bartrack"><div class="barfill" style="width:${p._durS}%"></div></div><div class="barval mono">${Math.round(p._durS)}</div></div>
-          <div class="barline"><div class="barlabel">Age</div><div class="bartrack"><div class="barfill" style="width:${p._youthS}%"></div></div><div class="barval mono">${Math.round(p._youthS)}</div></div>
-        </div>` : `<div class="nodata-note">Not enough data for a full score.</div>`}
-        <div class="ctx">
-          <div class="ctxitem">Age <b>${fmt(p.age)}</b></div>
-          <div class="ctxitem">Real Fairfield PPG <b>${fmt(p.affg)}</b></div>
-          ${positionContext(p)}
-          ${p.tor !== null ? `<div class="ctxitem">Team offense rank <b>#${p.tor}</b></div>` : ''}
-        </div>
-      </div>
-    `;
-    row.querySelector('.rowmain').addEventListener('click', () => {
-      const wasOpen = row.classList.contains('open');
-      document.querySelectorAll('.row.open').forEach(r => r.classList.remove('open'));
-      if (!wasOpen) row.classList.add('open');
-    });
-    list.appendChild(row);
-  });
+  let label, cls;
+  if (gapPct < 5) { label = 'Even trade'; cls = 'even'; }
+  else if (gapPct < 15) { label = 'Slight edge'; cls = 'slight'; }
+  else if (gapPct < 30) { label = 'Clear winner'; cls = 'clear'; }
+  else { label = 'Lopsided'; cls = 'lopsided'; }
+
+  const winnerLabel = document.getElementById('teamA').value || 'Team A';
+  const loserLabel = document.getElementById('teamB').value || 'Team B';
+  let who = '';
+  if (gapPct >= 5) {
+    who = gainA > 0 ? ` — favors ${winnerLabel}` : ` — favors ${loserLabel}`;
+  }
+
+  verb.className = 'verdict-verb ' + cls;
+  verb.textContent = label + who;
+  sub.textContent = `${winnerLabel} sends ${Math.round(totalA)} · ${loserLabel} sends ${Math.round(totalB)} · gap ${gapPct.toFixed(1)}%`;
 }
+
 render();
 </script>
 </body>
