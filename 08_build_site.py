@@ -60,9 +60,14 @@ def main():
             "dur": num(r["avg_games_played"]),
             "con": num(r["weekly_consistency_cv"]),  # coefficient of variation, not raw stdev
             "affg": num(r["actual_fairfield_ppg"]),
-            "ts": num(r["target_share"]),
             "tor": int(r["team_off_rank"]) if r["team_off_rank"] else None,
-            "toe": num(r["team_off_epa_per_game"]),
+            # position-specific context (shown in the expanded card, not scored):
+            "ts": num(r.get("target_share")),               # WR/TE
+            "wopr": num(r.get("wopr")),                      # WR/TE
+            "pyg": num(r.get("passing_yards_per_game")),     # QB
+            "pepa": num(r.get("passing_epa_per_game")),      # QB
+            "cpg": num(r.get("carries_per_game")),           # RB
+            "ryg": num(r.get("rushing_yards_per_game")),     # RB
         })
 
     SITE_DIR.mkdir(parents=True, exist_ok=True)
