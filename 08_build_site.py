@@ -54,10 +54,11 @@ def main():
             "p": r["position"],
             "t": r["nfl_team"] or "FA",
             "ft": r["fairfield_team"],
-            "prod": num(r["weighted_value"]),
+            "prod": num(r["vorp"]),           # Value Over Replacement, not raw weighted_value --
+                                                # this is what makes production cross-position fair.
             "age": num(r["age"]),
             "dur": num(r["avg_games_played"]),
-            "con": num(r["weekly_consistency_stdev"]),
+            "con": num(r["weekly_consistency_cv"]),  # coefficient of variation, not raw stdev
             "affg": num(r["actual_fairfield_ppg"]),
             "ts": num(r["target_share"]),
             "tor": int(r["team_off_rank"]) if r["team_off_rank"] else None,
