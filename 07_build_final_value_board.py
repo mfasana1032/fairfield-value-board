@@ -180,38 +180,85 @@ def position_group(pos):
     return "IDP" if pos in IDP_POSITIONS else (pos or "UNK")
 
 
-def normalize_within_position(board, value_getter, invert=False):
+# ============================================================
+# VALUE OVER REPLACEMENT (VORP) -- makes production genuinely
+# comparable ACROSS positions, using real facts about your league's
+# roster construction (12 teams, real starter slots) rather than an
+# invented cross-position multiplier.
+# ============================================================
+N_TEAMS = 12
+DEDICATED_SLOTS = {"QB": 1, "RB": 2, "WR": 2, "TE": 1, "IDP": 1}  # per team, from real roster_positions
+N_FLEX = 2          # FLEX slots per team (RB/WR/TE eligible)
+N_SUPERFLEX = 1     # SUPER_FLEX slots per team (QB/RB/WR/TE eligible)
+
+# How flex slots get credited toward each position's real league-wide
+# starter demand. This IS a documented assumption (there's no way to know
+# in advance exactly how often a flex slot goes to an RB vs a WR vs a QB2)
+# -- shown here rather than hidden, and easy to adjust if your league's
+# actual flex usage looks different. Default reflects common usage: FLEX
+# mostly goes to RB/WR, SUPER_FLEX mostly goes to a second QB.
+FLEX_ALLOCATION = {
+    "FLEX": {"RB": 0.45, "WR": 0.45, "TE": 0.10},
+    "SUPER_FLEX": {"QB": 0.70, "RB": 0.15, "WR": 0.15},
+}
+
+
+def compute_replacement_ranks():
+    """How many players at each position are 'realistically startable'
+    league-wide, given real team count and real roster slots."""
+    slots = {pos: count * N_TEAMS for pos, count in DEDICATED_SLOTS.items()}
+    for pos, frac in FLEX_ALLOCATION["FLEX"].items():
+        slots[pos] = slots.get(pos, 0) + frac * N_FLEX * N_TEAMS
+    for pos, frac in FLEX_ALLOCATION["SUPER_FLEX"].items():
+        slots[pos] = slots.get(pos, 0) + frac * N_SUPERFLEX * N_TEAMS
+    return {pos: max(1, round(v)) for pos, v in slots.items()}
+
+
+def compute_vorp(board):
     """
-    Normalize a metric to 0-100 SEPARATELY within each position group, so a
-    running back is scored against other running backs, a QB against QBs, etc.
-    Returns {player_id: score_or_None}. A player alone in his group (or whose
-    group has no spread) lands at 50 -- a neutral middle -- rather than a
-    misleading 100 or 0.
+    Each player's production expressed as points above his position's real
+    replacement level, instead of a percentile within his position. This is
+    what makes the final score genuinely comparable ACROSS positions (a QB
+    and a TE can be honestly compared) while still reflecting the true,
+    structural scarcity of each position in YOUR league -- not an opinion.
+    Returns {player_id: vorp_or_None}.
     """
-    # bucket player_ids by position group
-    groups = {}
+    ranks = compute_replacement_ranks()
+    by_group = {}
     for r in board:
         grp = position_group(r["position"])
-        groups.setdefault(grp, []).append(r)
+        wv = to_float(r.get("weighted_value"))
+        if wv is not None:
+            by_group.setdefault(grp, []).append(wv)
+
+    replacement_level = {}
+    for grp, vals in by_group.items():
+        vals_sorted = sorted(vals, reverse=True)
+        n = ranks.get(grp, 12)
+        idx = min(max(n, 1), len(vals_sorted)) - 1
+        replacement_level[grp] = vals_sorted[idx] if vals_sorted else 0.0
 
     out = {}
-    for grp, rows in groups.items():
-        vals_by_id = {r["player_id"]: value_getter(r) for r in rows}
-        real_vals = [v for v in vals_by_id.values() if v is not None]
-        if len(real_vals) < 2 or (max(real_vals) - min(real_vals)) == 0:
-            # not enough spread to rank meaningfully within this group
-            for pid, v in vals_by_id.items():
-                out[pid] = 50.0 if v is not None else None
+    for r in board:
+        wv = to_float(r.get("weighted_value"))
+        if wv is None:
+            out[r["player_id"]] = None
         else:
-            out.update(min_max_normalize(vals_by_id, invert=invert))
-    return out
+            grp = position_group(r["position"])
+            out[r["player_id"]] = round(wv - replacement_level.get(grp, 0.0), 2)
+    return out, replacement_level, ranks
 
 
 def compute_weekly_consistency():
     """
-    stdev of a player's weekly ACTUAL Fairfield points, across all weeks
-    found in the saved league history (script 03's matchups.json files).
-    Lower stdev = more consistent. Returns {player_id: stdev_or_None}.
+    Coefficient of variation (stdev / mean) of a player's weekly ACTUAL
+    Fairfield points, across all weeks found in the saved league history
+    (script 03's matchups.json files). Using stdev/mean instead of raw
+    stdev makes this fairly comparable ACROSS positions -- a QB who scores
+    25 +/- 5 and a TE who scores 8 +/- 1.6 have the same relative
+    consistency (20%), even though their raw point swings are very
+    different sizes. Lower CoV = more consistent. Returns
+    {player_id: cv_or_None}.
     """
     weekly_points = {}  # player_id -> list of weekly points
     if not HISTORY_DIR.exists():
@@ -232,7 +279,9 @@ def compute_weekly_consistency():
     out = {}
     for pid, pts_list in weekly_points.items():
         if len(pts_list) >= 4:  # need a reasonable sample to say anything about consistency
-            out[pid] = round(statistics.stdev(pts_list), 2)
+            mean = statistics.mean(pts_list)
+            stdev = statistics.stdev(pts_list)
+            out[pid] = round(stdev / mean, 3) if mean > 0.5 else None
         else:
             out[pid] = None
     return out
@@ -247,8 +296,26 @@ def main():
 
     print(f"Using lens: {LENS}  {weights}")
 
-    print("Loading combined value board (production + real in-league history)...")
-    board = load_csv(DATA_DIR / "value_board_combined.csv")
+    print("Loading combined value board (full league-wide production pool)...")
+    full_pool = load_csv(DATA_DIR / "value_board_combined.csv")
+    n_rostered = sum(1 for r in full_pool if r.get("fairfield_team"))
+    print(f"  {len(full_pool)} players in the full pool ({n_rostered} currently on a Fairfield roster)")
+
+    # Compute Value Over Replacement across the FULL pool, before filtering
+    # down to just your roster -- the replacement level (waiver-wire floor)
+    # at each position needs the wide pool to be accurate. See compute_vorp
+    # for the full explanation.
+    print("Computing replacement levels (Value Over Replacement) from the full pool...")
+    vorp_by_pid, replacement_level, replacement_ranks = compute_vorp(full_pool)
+    print(f"  replacement ranks used: {replacement_ranks}")
+    print(f"  replacement level (PPG) by position: { {k: round(v, 1) for k, v in replacement_level.items()} }")
+
+    # Now narrow down to what actually gets displayed: players currently
+    # rostered by a Fairfield team. Everything below only touches this
+    # smaller set -- the wide pool has done its job (setting an honest
+    # replacement level) and isn't needed again.
+    board = [r for r in full_pool if r.get("fairfield_team")]
+    print(f"Narrowed to {len(board)} currently-rostered players for display.")
 
     print("Loading nflverse player context...")
     player_ctx_rows = load_csv(NFLVERSE_DIR / "player_context_by_season.csv")
@@ -260,7 +327,9 @@ def main():
 
     print("Loading nflverse team context...")
     team_ctx_rows = load_csv(NFLVERSE_DIR / "team_context_by_season.csv")
-    team_ctx_2025 = {row["team"]: row for row in team_ctx_rows if row["season"] == "2025"}
+    latest_team_season = max((r["season"] for r in team_ctx_rows), default=None)
+    team_ctx_latest = {row["team"]: row for row in team_ctx_rows if row["season"] == latest_team_season}
+    print(f"  using {latest_team_season} team context (most recent season available)")
 
     print("Loading nflverse player bio (age, draft info)...")
     bio_rows = load_csv(NFLVERSE_DIR / "players_bio.csv")
@@ -305,7 +374,7 @@ def main():
                 unmatched_player_ctx.append(row["player_name"])
 
         # --- team context: player's CURRENT team, most recent season ---
-        team_row = team_ctx_2025.get(row.get("nfl_team", ""))
+        team_row = team_ctx_latest.get(row.get("nfl_team", ""))
         if team_row:
             row["team_off_rank"] = team_row["off_rank"]
             row["team_off_epa_per_game"] = team_row["off_epa_per_game"]
@@ -334,26 +403,37 @@ def main():
         gp_vals = [g for g in gp_vals if g is not None and g > 0]
         row["avg_games_played"] = round(sum(gp_vals) / len(gp_vals), 1) if gp_vals else ""
 
-        # --- consistency ---
-        stdev = consistency_by_pid.get(row["player_id"])
-        row["weekly_consistency_stdev"] = stdev if stdev is not None else ""
+        # --- consistency (coefficient of variation, scale-independent) ---
+        cv = consistency_by_pid.get(row["player_id"])
+        row["weekly_consistency_cv"] = cv if cv is not None else ""
 
     # ------------------------------------------------------------
-    # Composite dynasty_score -- ONLY from production/age/durability/consistency,
-    # each normalized WITHIN position group (RB vs RB, QB vs QB, WR vs WR,
-    # TE vs TE, IDP as one group) so bars mean "how good for his position".
+    # Composite dynasty_score -- ONE cross-position-comparable score, built
+    # from real, honest inputs:
+    #   - production: VALUE OVER REPLACEMENT (see compute_vorp) -- points
+    #     above the real replacement level at that position in YOUR league,
+    #     then normalized globally so a QB, RB, TE, and IDP are genuinely
+    #     comparable on the same scale (not four separate percentile scales).
+    #   - age: the absolute YOUTH_CURVE (already cross-position by design)
+    #   - durability: games played, normalized globally (already a fair
+    #     cross-position unit -- 15 of 17 games means the same thing at
+    #     any position)
+    #   - consistency: coefficient of variation, normalized globally (scale-
+    #     independent, so a high-scoring QB and a low-scoring TE with the
+    #     same RELATIVE week-to-week swing score the same)
+    # This means the exact same number appears whether you're looking at
+    # the ALL view or filtered to one position -- there is only one score.
     # ------------------------------------------------------------
-    print("Computing composite dynasty_score (scored within position groups)...")
-    prod_scores = normalize_within_position(board, lambda r: to_float(r.get("weighted_value")))
-    dur_scores = normalize_within_position(board, lambda r: to_float(r.get("avg_games_played")))
-    con_scores = normalize_within_position(board, lambda r: to_float(r.get("weekly_consistency_stdev")), invert=True)
-    # Youth uses the absolute age CURVE, not within-position normalization --
-    # being 22 means "young" regardless of position, and the curve prevents
-    # the single youngest player from running away with a perfect score.
+    print("Computing composite dynasty_score (Value Over Replacement, cross-position)...")
+
+    prod_scores = min_max_normalize(vorp_by_pid)
+    dur_scores = min_max_normalize({r["player_id"]: to_float(r.get("avg_games_played")) for r in board})
+    con_scores = min_max_normalize({r["player_id"]: to_float(r.get("weekly_consistency_cv")) for r in board}, invert=True)
     youth_scores = {r["player_id"]: youth_score_from_age(to_float(r.get("age"))) for r in board}
 
     for row in board:
         pid = row["player_id"]
+        row["vorp"] = vorp_by_pid.get(pid) if vorp_by_pid.get(pid) is not None else ""
         parts = {
             "production": prod_scores.get(pid),
             "age": youth_scores.get(pid),
