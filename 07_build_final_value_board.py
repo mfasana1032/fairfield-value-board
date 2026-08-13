@@ -130,6 +130,40 @@ def min_max_normalize(values_by_id, invert=False):
     return out
 
 
+# IDP positions collapse into one "IDP" group; everyone else stays their own.
+IDP_POSITIONS = {"LB", "DB", "DL", "DE", "DT", "CB", "S"}
+
+def position_group(pos):
+    return "IDP" if pos in IDP_POSITIONS else (pos or "UNK")
+
+
+def normalize_within_position(board, value_getter, invert=False):
+    """
+    Normalize a metric to 0-100 SEPARATELY within each position group, so a
+    running back is scored against other running backs, a QB against QBs, etc.
+    Returns {player_id: score_or_None}. A player alone in his group (or whose
+    group has no spread) lands at 50 -- a neutral middle -- rather than a
+    misleading 100 or 0.
+    """
+    # bucket player_ids by position group
+    groups = {}
+    for r in board:
+        grp = position_group(r["position"])
+        groups.setdefault(grp, []).append(r)
+
+    out = {}
+    for grp, rows in groups.items():
+        vals_by_id = {r["player_id"]: value_getter(r) for r in rows}
+        real_vals = [v for v in vals_by_id.values() if v is not None]
+        if len(real_vals) < 2 or (max(real_vals) - min(real_vals)) == 0:
+            # not enough spread to rank meaningfully within this group
+            for pid, v in vals_by_id.items():
+                out[pid] = 50.0 if v is not None else None
+        else:
+            out.update(min_max_normalize(vals_by_id, invert=invert))
+    return out
+
+
 def compute_weekly_consistency():
     """
     stdev of a player's weekly ACTUAL Fairfield points, across all weeks
@@ -262,18 +296,15 @@ def main():
         row["weekly_consistency_stdev"] = stdev if stdev is not None else ""
 
     # ------------------------------------------------------------
-    # Composite dynasty_score -- ONLY from production/age/durability/consistency
+    # Composite dynasty_score -- ONLY from production/age/durability/consistency,
+    # each normalized WITHIN position group (RB vs RB, QB vs QB, WR vs WR,
+    # TE vs TE, IDP as one group) so bars mean "how good for his position".
     # ------------------------------------------------------------
-    print("Computing composite dynasty_score...")
-    prod_vals = {r["player_id"]: to_float(r.get("weighted_value")) for r in board}
-    age_vals = {r["player_id"]: to_float(r.get("age")) for r in board}
-    dur_vals = {r["player_id"]: to_float(r.get("avg_games_played")) for r in board}
-    con_vals = {r["player_id"]: to_float(r.get("weekly_consistency_stdev")) for r in board}
-
-    prod_scores = min_max_normalize(prod_vals)
-    youth_scores = min_max_normalize(age_vals, invert=True)   # younger -> higher score
-    dur_scores = min_max_normalize(dur_vals)
-    con_scores = min_max_normalize(con_vals, invert=True)     # lower stdev -> higher score
+    print("Computing composite dynasty_score (scored within position groups)...")
+    prod_scores = normalize_within_position(board, lambda r: to_float(r.get("weighted_value")))
+    youth_scores = normalize_within_position(board, lambda r: to_float(r.get("age")), invert=True)
+    dur_scores = normalize_within_position(board, lambda r: to_float(r.get("avg_games_played")))
+    con_scores = normalize_within_position(board, lambda r: to_float(r.get("weekly_consistency_stdev")), invert=True)
 
     for row in board:
         pid = row["player_id"]
