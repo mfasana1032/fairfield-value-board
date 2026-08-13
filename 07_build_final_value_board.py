@@ -327,10 +327,31 @@ def main():
     print(f"  replacement ranks used: {replacement_ranks}")
     print(f"  replacement level (PPG) by position: { {k: round(v, 1) for k, v in replacement_level.items()} }")
 
+    # Durability, scored against the FULL wide pool too -- same reasoning as
+    # production. If it were scored only against your 12-team roster, "100"
+    # would mean nothing more than "the most durable guy currently on
+    # somebody's Fairfield roster," which shifts depending on who you
+    # happen to have, not on any real, stable bar of iron-man durability.
+    # Scoring it against the whole league-wide pool means 100 reflects a
+    # genuinely elite real-NFL durability record, not a locally-inflated one.
+    def _gp_for(row):
+        gp_vals = [to_float(row.get(f"gp_{s}")) for s in SEASONS_DESC]
+        gp_vals = [g for g in gp_vals if g is not None and g > 0]
+        return round(sum(gp_vals) / len(gp_vals), 1) if gp_vals else None
+
+    wide_durability = {r["player_id"]: _gp_for(r) for r in full_pool}
+    dur_scores = min_max_normalize(wide_durability)
+
+    # Consistency CANNOT be widened the same way -- it's built from real
+    # weekly results in YOUR league specifically, so it only exists at all
+    # for players who've actually been on a Fairfield roster. There's no
+    # "full NFL pool" version of this stat to fall back on; it's an
+    # inherent data limitation, not something left unfixed by oversight.
+
     # Now narrow down to what actually gets displayed: players currently
     # rostered by a Fairfield team. Everything below only touches this
     # smaller set -- the wide pool has done its job (setting an honest
-    # replacement level) and isn't needed again.
+    # replacement level and durability scale) and isn't needed again.
     board = [r for r in full_pool if r.get("fairfield_team")]
     print(f"Narrowed to {len(board)} currently-rostered players for display.")
 
@@ -467,7 +488,7 @@ def main():
     print("Computing composite dynasty_score (Value Over Replacement, cross-position)...")
 
     prod_scores = min_max_normalize(vorp_by_pid)
-    dur_scores = min_max_normalize({r["player_id"]: to_float(r.get("avg_games_played")) for r in board})
+    # dur_scores already computed above from the full wide pool
     con_scores = min_max_normalize({r["player_id"]: to_float(r.get("weekly_consistency_cv")) for r in board}, invert=True)
     youth_scores = {r["player_id"]: youth_score_from_age(to_float(r.get("age"))) for r in board}
 
