@@ -1,21 +1,23 @@
 """
 Fairfield Dynasty League -- Build Publishable Site
 Run this from: C:\\Users\\micha\\OneDrive\\Python\\Rndom\\Fantasy Football
-(run 01, 02, 03, 04, 06, and 07 first -- this is the final step)
+(run 01, 02, 03, 04, 06, 07, and 09 first -- this is the final step)
 
 What this does:
-  Turns data/value_board_FINAL.csv into a ready-to-publish website: a
-  site/ folder containing index.html + players_data.js. Point GitHub
-  Pages (or Netlify, or any static host) at the site/ folder and this
-  becomes the live, shareable link the whole league uses.
+  Turns data/value_board_FINAL.csv and data/pick_values.csv into a
+  ready-to-publish website: a site/ folder containing index.html (the
+  value board), trade.html (the trade builder), players_data.js, and
+  picks_data.js. Point GitHub Pages at the site/ folder and this becomes
+  the live, shareable link the whole league uses.
 
   This is the same site every league member has been using -- this script
   just automates the "turn today's data into a website" step so it can
   run unattended on a schedule instead of you rebuilding it by hand.
 
 BEFORE RUNNING:
-  Run 01, 02, 03, 04, 06, and 07 first, in that order.
-  Needs template.html to exist in the same folder as this script.
+  Run 01, 02, 03, 04, 06, 07, and 09 first, in that order.
+  Needs template.html AND trade_template.html to exist in the same
+  folder as this script.
 """
 
 import csv
@@ -27,6 +29,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 DATA_DIR = SCRIPT_DIR / "data"
 SITE_DIR = SCRIPT_DIR / "site"
 TEMPLATE_PATH = SCRIPT_DIR / "template.html"
+TRADE_TEMPLATE_PATH = SCRIPT_DIR / "trade_template.html"
 
 
 def num(v):
@@ -79,6 +82,40 @@ def main():
 
     print("Copying template.html -> site/index.html...")
     shutil.copy(TEMPLATE_PATH, SITE_DIR / "index.html")
+
+    # ------------------------------------------------------------
+    # Trade builder page (optional -- only built if the pick values
+    # and trade template both exist, so this script still works fine
+    # before the trade tool is added to a repo)
+    # ------------------------------------------------------------
+    pick_csv = DATA_DIR / "pick_values.csv"
+    if pick_csv.exists() and TRADE_TEMPLATE_PATH.exists():
+        print("Reading pick values...")
+        with open(pick_csv, "r", encoding="utf-8", newline="") as f:
+            pick_rows = list(csv.DictReader(f))
+
+        picks = []
+        for r in pick_rows:
+            picks.append({
+                "season": r["season"],
+                "round": int(r["round"]),
+                "label": r["label"],
+                "value": num(r["value"]),
+                "team": r["current_team"],      # who currently owns/controls this pick
+                "orig": r["original_team"],     # whose real draft slot sets its value
+                "basis": r["basis"],
+                "yrs": int(r["years_out"]),
+            })
+
+        print(f"Writing picks_data.js ({len(picks)} picks)...")
+        picks_js = "const PICKS = " + json.dumps(picks, separators=(",", ":")) + ";"
+        with open(SITE_DIR / "picks_data.js", "w", encoding="utf-8") as f:
+            f.write(picks_js)
+
+        print("Copying trade_template.html -> site/trade.html...")
+        shutil.copy(TRADE_TEMPLATE_PATH, SITE_DIR / "trade.html")
+    else:
+        print("Skipping trade builder page (pick_values.csv or trade_template.html not found yet).")
 
     print(f"\nDone. Site ready in {SITE_DIR}")
     print("If running locally, open site/index.html in a browser to preview.")
