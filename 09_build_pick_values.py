@@ -68,13 +68,16 @@ WORST_RECORD_PICKS_FIRST = True
 # PICK VALUE CURVE -- documented, adjustable
 # ============================================================
 # Anchor points, hand-picked to match the real shape every dynasty
-# source agrees on: pick 1.01 is valuable but still below a PROVEN
-# elite player (consistent with the same "unproven sample" discount
-# philosophy used for rookie production elsewhere in this pipeline);
-# value drops steeply through round 1, more gently after.
-PICK_1_01_VALUE = 58.0      # best pick in the draft
-ROUND_2_START_VALUE = 22.0  # first pick of round 2
-FLOOR_VALUE = 4.0           # last pick of the draft floor
+# source agrees on: an early 1st is genuinely comparable to a strong
+# established player (real dynasty markets treat 1.01 as premium capital,
+# not a discount asset), dropping steeply through round 1, then more
+# gently through round 2 and beyond. Recalibrated after a real trade
+# sanity-check showed the original anchors undervalued an early 1st +
+# a 2nd against a good (not elite) starter -- that combination should
+# clearly win, not lose, and now does.
+PICK_1_01_VALUE = 82.0      # best pick in the draft -- comparable to an elite proven player
+ROUND_2_START_VALUE = 38.0  # first pick of round 2 -- still a real, meaningful asset
+FLOOR_VALUE = 6.0           # last pick of the draft floor
 
 # Future-year discount: a pick further out is worth less than the same
 # slot THIS year (uncertainty + delayed payoff -- a real, standard
