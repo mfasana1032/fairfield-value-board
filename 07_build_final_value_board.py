@@ -259,15 +259,12 @@ def compute_weekly_consistency():
     consistency (20%), even though their raw point swings are very
     different sizes. Lower CoV = more consistent.
 
-    SMALL-SAMPLE DISCOUNT: a CV computed from only a handful of weeks is
-    just as unreliable as production computed from one season -- a rookie
-    who's only had 5 good weeks can look artificially "rock solid" purely
-    from a short sample, the same way a hot one-year stretch used to look
-    like elite production before that discount was added. So a player's
-    real CV is blended toward the LEAGUE-WIDE AVERAGE CV, with the blend
-    weighted by how many real weeks of history back it up -- full trust in
-    the real number once there's about a season's worth of data (16+
-    weeks), heavily blended toward the average with very little history.
+    Returns RAW cv here -- the small-sample confidence discount is applied
+    later in main(), using years_of_data (the same signal already used for
+    the production discount) rather than raw week count. A rookie's one
+    season can easily span 16+ weeks, which would wrongly look like "full
+    trust" by a week-count threshold -- years_of_data correctly still flags
+    that as one season of unproven evidence.
 
     Returns {player_id: cv_or_None}.
     """
@@ -287,31 +284,14 @@ def compute_weekly_consistency():
                 for pid, pts in players_points.items():
                     weekly_points.setdefault(pid, []).append(pts)
 
-    # First pass: raw CV + week count for everyone with enough sample to compute anything
-    raw_cv = {}
-    weeks_count = {}
+    out = {}
     for pid, pts_list in weekly_points.items():
-        weeks_count[pid] = len(pts_list)
         if len(pts_list) >= 4:
             mean = statistics.mean(pts_list)
             stdev = statistics.stdev(pts_list)
-            raw_cv[pid] = (stdev / mean) if mean > 0.5 else None
+            out[pid] = round(stdev / mean, 3) if mean > 0.5 else None
         else:
-            raw_cv[pid] = None
-
-    real_cvs = [v for v in raw_cv.values() if v is not None]
-    pool_mean_cv = statistics.mean(real_cvs) if real_cvs else 1.0
-    FULL_TRUST_WEEKS = 16  # roughly one season of real history
-
-    out = {}
-    for pid in weekly_points:
-        cv = raw_cv.get(pid)
-        if cv is None:
             out[pid] = None
-            continue
-        confidence = min(weeks_count[pid] / FULL_TRUST_WEEKS, 1.0)
-        blended = pool_mean_cv + (cv - pool_mean_cv) * confidence
-        out[pid] = round(blended, 3)
     return out
 
 
@@ -323,6 +303,15 @@ def main():
         raise SystemExit(f"Weights for '{LENS}' must sum to 1.0 -- currently sum to {sum(weights.values())}")
 
     print(f"Using lens: {LENS}  {weights}")
+
+    # Compute the same dynamic season window used by 02/06, so the season
+    # column names checked below (gp_2025, gp_2024, etc.) and the nflverse
+    # context lookup stay correct as seasons roll forward -- avoids the
+    # exact hardcoded-year bug that bit the durability calc before this fix.
+    with open(DATA_DIR / "league_info.json", "r", encoding="utf-8") as _f:
+        _current_season = int(json.load(_f)["season"])
+    SEASONS_DESC = [str(_current_season), str(_current_season - 1), str(_current_season - 2)]
+    print(f"  season window: {SEASONS_DESC}")
 
     print("Loading combined value board (full league-wide production pool)...")
     full_pool = load_csv(DATA_DIR / "value_board_combined.csv")
@@ -366,6 +355,17 @@ def main():
     print("Computing weekly consistency from real league history...")
     consistency_by_pid = compute_weekly_consistency()
 
+    # Same confidence philosophy as the production discount, applied to
+    # consistency -- but MORE conservative for thin samples than production
+    # is. This is a real statistical distinction, not an arbitrary choice:
+    # a variance-based statistic (like CV) is inherently noisier to estimate
+    # from a small sample than a simple average is, so 1 season of history
+    # should earn less trust here than it does for raw production.
+    CV_CONFIDENCE = {1: 0.40, 2: 0.75, 3: 1.00}
+    _raw_cvs = [v for v in consistency_by_pid.values() if v is not None]
+    pool_mean_cv = statistics.mean(_raw_cvs) if _raw_cvs else 1.0
+    print(f"  pool-wide average CV (used as the shrinkage anchor): {pool_mean_cv:.3f}")
+
     # ------------------------------------------------------------
     # Merge everything onto the board
     # ------------------------------------------------------------
@@ -380,7 +380,7 @@ def main():
         ctx_by_season = player_ctx_by_name.get(norm_name, {})
         ctx = None
         used_season = ""
-        for season in ("2025", "2024", "2023"):
+        for season in SEASONS_DESC:
             if season in ctx_by_season:
                 ctx = ctx_by_season[season]
                 used_season = season
@@ -427,13 +427,25 @@ def main():
             unmatched_bio.append(row["player_name"])
 
         # --- durability: average games played across seasons with data ---
-        gp_vals = [to_float(row.get(f"gp_{s}")) for s in ("2023", "2024", "2025")]
+        gp_vals = [to_float(row.get(f"gp_{s}")) for s in SEASONS_DESC]
         gp_vals = [g for g in gp_vals if g is not None and g > 0]
         row["avg_games_played"] = round(sum(gp_vals) / len(gp_vals), 1) if gp_vals else ""
 
         # --- consistency (coefficient of variation, scale-independent) ---
-        cv = consistency_by_pid.get(row["player_id"])
-        row["weekly_consistency_cv"] = cv if cv is not None else ""
+        # Small-sample discount uses YEARS OF DATA (years_of_data, already
+        # computed for the production discount) rather than raw week count.
+        # A rookie's single season can span 16+ weeks, which would wrongly
+        # look like "enough evidence" by a week-count threshold -- but it's
+        # still only one season of proof, exactly as unproven as his
+        # one-year production number was before that discount existed.
+        raw_cv = consistency_by_pid.get(row["player_id"])
+        n_years_cv = int(row.get("years_of_data") or 0)
+        if raw_cv is not None:
+            cv_confidence = CV_CONFIDENCE.get(n_years_cv, 1.00)
+            blended_cv = pool_mean_cv + (raw_cv - pool_mean_cv) * cv_confidence
+            row["weekly_consistency_cv"] = round(blended_cv, 3)
+        else:
+            row["weekly_consistency_cv"] = ""
 
     # ------------------------------------------------------------
     # Composite dynasty_score -- ONE cross-position-comparable score, built
