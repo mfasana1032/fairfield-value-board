@@ -1,13 +1,20 @@
 """
-Fairfield Dynasty League -- Multi-Year Value Board (2023-2025)
+Fairfield Dynasty League -- League-Wide Value Board (2023-2025)
 Run this from: C:\\Users\\micha\\OneDrive\\Python\\Rndom\\Fantasy Football
 (same folder as 01_fetch_league_data.py -- run that one first)
 
 What this does:
-  Computes every rostered player's ACTUAL fantasy production for each of
-  the 2023, 2024, and 2025 NFL regular seasons, using YOUR league's exact
-  scoring_settings -- then builds one recency-weighted value score per
-  player so recent play counts more than old play.
+  Computes ACTUAL fantasy production for every NFL player at a relevant
+  position (QB/RB/WR/TE/IDP) who had real stats in the last 2-3 seasons --
+  not just players currently on a Fairfield roster. Uses YOUR league's
+  exact scoring_settings, recency-weighted PPG.
+
+  Widened beyond just rostered players on purpose: downstream, the value
+  board computes each player's value relative to a real "replacement
+  level" at his position (the waiver-wire floor) -- and that floor is
+  invisible if this script only ever looks at players someone rosters.
+  Currently-rostered players are still flagged via the fairfield_team
+  column; everyone else is context used to set an honest baseline.
 
   Uses POINTS PER GAME as the base unit, not raw season totals, so an
   injury-shortened season doesn't unfairly tank a good player's value.
@@ -110,11 +117,15 @@ def main():
     print("Loading player database...")
     players = load_json("players_nfl.json")
 
-    print("Loading your current rosters...")
+    print("Loading your current rosters (for team attribution only)...")
     roster_rows = load_json("roster_board.json")
-    rostered_ids = sorted({r["player_id"] for r in roster_rows})
     team_by_player = {r["player_id"]: r["team_name"] for r in roster_rows}
-    print(f"  {len(rostered_ids)} rostered players to score")
+    print(f"  {len(team_by_player)} currently rostered on a Fairfield team")
+
+    # Relevant fantasy positions for this league (matches your actual
+    # roster_positions -- offense skill positions plus IDP). Kickers/DST
+    # are excluded since the league doesn't roster them.
+    RELEVANT_POSITIONS = {"QB", "RB", "WR", "TE", "LB", "DB", "DL", "DE", "DT", "CB", "S"}
 
     # ------------------------------------------------------------
     # Fetch all three seasons up front
@@ -137,11 +148,28 @@ def main():
                 raise SystemExit(1)
 
     # ------------------------------------------------------------
-    # Score every rostered player, every season
+    # Build the FULL scoring pool: everyone with real production in any
+    # tracked season, not just currently-rostered players. This matters
+    # for downstream replacement-level calculations (VORP) -- the true
+    # "replacement level" at a position is set by the waiver-wire floor,
+    # which is invisible if we only ever look at players someone rosters.
     # ------------------------------------------------------------
-    print("Applying your league's scoring settings across all three seasons...")
+    all_ids = set()
+    for season in SEASONS:
+        all_ids.update(season_stats.get(season, {}).keys())
+    pool_ids = sorted(
+        pid for pid in all_ids
+        if players.get(pid, {}).get("position") in RELEVANT_POSITIONS
+    )
+    print(f"Full league-wide production pool: {len(pool_ids)} players "
+          f"(at QB/RB/WR/TE/IDP positions with real stats in at least one tracked season)")
+
+    # ------------------------------------------------------------
+    # Score every player in the pool, every season
+    # ------------------------------------------------------------
+    print("Applying your league's scoring settings across all tracked seasons...")
     rows = []
-    for pid in rostered_ids:
+    for pid in pool_ids:
         p = players.get(pid, {})
         row = {
             "player_name": p.get("full_name") or pid,
@@ -208,10 +236,13 @@ def main():
         writer.writerows(rows)
 
     no_data = [r["player_name"] for r in rows if r["years_of_data"] == 0]
+    n_rostered = sum(1 for r in rows if r["fairfield_team"])
     print(f"\nSaved {out_path}")
-    print(f"Ranked {len(rows) - len(no_data)} of {len(rows)} rostered players with at least one season of data.")
+    print(f"Scored {len(rows) - len(no_data)} of {len(rows)} league-wide players with at least one season of data.")
+    print(f"({n_rostered} of those are currently on a Fairfield roster; the rest is the wider pool used "
+          f"to set a real replacement-level baseline for value-over-replacement scoring downstream.)")
     if no_data:
-        print(f"\n{len(no_data)} players had no data in any of {SEASONS} (likely true rookies, or a name/ID mismatch):")
+        print(f"\n{len(no_data)} players had no data in any of {SEASONS} (unexpected -- flag this):")
         for name in no_data[:20]:
             print("  -", name)
         if len(no_data) > 20:
