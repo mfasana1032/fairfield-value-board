@@ -361,15 +361,37 @@ const PLACEHOLDER_DATA = [];
 const DATA = (typeof PLAYERS !== 'undefined') ? PLAYERS : PLACEHOLDER_DATA;
 
 const WEIGHTS = {
-  balanced:  {production:0.50, age:0.20, durability:0.15, consistency:0.15},
-  contender: {production:0.65, age:0.05, durability:0.15, consistency:0.15},
-  rebuild:   {production:0.30, age:0.40, durability:0.15, consistency:0.15},
+  balanced:  {production:0.56, age:0.14, durability:0.15, consistency:0.15},
+  contender: {production:0.68, age:0.04, durability:0.14, consistency:0.14},
+  rebuild:   {production:0.34, age:0.36, durability:0.15, consistency:0.15},
 };
 const LENS_LABELS = {
-  balanced:  "production 50 · age 20 · durability 15 · consistency 15",
-  contender: "production 65 · age 5 · durability 15 · consistency 15",
-  rebuild:   "production 30 · age 40 · durability 15 · consistency 15",
+  balanced:  "production 56 · age 14 · durability 15 · consistency 15",
+  contender: "production 68 · age 4 · durability 14 · consistency 14",
+  rebuild:   "production 34 · age 36 · durability 15 · consistency 15",
 };
+
+// Youth curve -- must match YOUTH_CURVE in 07_build_final_value_board.py.
+// Maps a real age to a 0-100 youth score so young players cluster near the
+// top without the single youngest running away with a perfect 100.
+const YOUTH_CURVE = [
+  [22.0,100.0],[24.0,92.0],[25.0,88.0],[27.0,74.0],[28.0,62.0],
+  [29.0,50.0],[30.0,40.0],[31.0,30.0],[32.0,22.0],[34.0,12.0],[37.0,6.0]
+];
+function youthScoreFromAge(age) {
+  if (age === null || age === undefined || isNaN(age)) return null;
+  const lo = YOUTH_CURVE[0], hi = YOUTH_CURVE[YOUTH_CURVE.length-1];
+  if (age <= lo[0]) return lo[1];
+  if (age >= hi[0]) return hi[1];
+  for (let i=0; i<YOUTH_CURVE.length-1; i++) {
+    const [a1,s1] = YOUTH_CURVE[i], [a2,s2] = YOUTH_CURVE[i+1];
+    if (age >= a1 && age <= a2) {
+      const frac = (age-a1)/(a2-a1);
+      return Math.round((s1 + frac*(s2-s1))*10)/10;
+    }
+  }
+  return hi[1];
+}
 
 let currentLens = 'balanced';
 let currentPos = 'ALL';
@@ -419,7 +441,8 @@ function normalizeWithinPosition(getVal, invert) {
 
 // Precompute the four component scores ONCE, each within position (lens-independent)
 const prodScore = normalizeWithinPosition(p => p.prod, false);
-const youthScore = normalizeWithinPosition(p => p.age, true);
+const youthScore = {};
+DATA.forEach((p, i) => { youthScore[i] = youthScoreFromAge(p.age); });
 const durScore = normalizeWithinPosition(p => p.dur, false);
 const conScore = normalizeWithinPosition(p => p.con, true);
 
