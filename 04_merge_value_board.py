@@ -93,10 +93,13 @@ def main():
         writer.writerows(nfl_rows)
 
     matched = sum(1 for r in nfl_rows if r["actual_fairfield_points"] != "")
+    n_rostered = sum(1 for r in nfl_rows if r.get("fairfield_team"))
     print(f"\nSaved {out_path}")
-    print(f"{matched} of {len(nfl_rows)} rostered players had real in-league history found.")
-    print("Players with no in-league history are likely recent waiver adds or trade acquisitions")
-    print("who haven't actually played a game on a Fairfield roster yet.")
+    print(f"{matched} of {len(nfl_rows)} league-wide players had real in-league history found "
+          f"({n_rostered} of them are currently on a Fairfield roster).")
+    print("Non-rostered players with no in-league history is expected -- they were never on")
+    print("a Fairfield team. This wider pool exists to set an honest replacement-level baseline")
+    print("for value-over-replacement scoring in 07, not to be displayed directly.")
 
 
 if __name__ == "__main__":
