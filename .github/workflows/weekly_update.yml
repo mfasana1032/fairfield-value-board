@@ -1,0 +1,60 @@
+name: Weekly Value Board Update
+
+on:
+  schedule:
+    - cron: "0 12 * * 2"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Fetch league data (Sleeper)
+        run: python 01_fetch_league_data.py
+
+      - name: Build NFL-production value board
+        run: python 02_build_value_board.py
+
+      - name: Fetch real league history (Sleeper)
+        run: python 03_fetch_league_history.py
+
+      - name: Merge real history into value board
+        run: python 04_merge_value_board.py
+
+      - name: Fetch NFL offensive context (nflverse)
+        run: python 06_fetch_nflverse_data.py
+
+      - name: Build final value board with dynasty scores
+        run: python 07_build_final_value_board.py
+
+      - name: Build the publishable site
+        run: python 08_build_site.py
+
+      - name: Upload site as Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Publish to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
