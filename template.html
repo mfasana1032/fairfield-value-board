@@ -94,7 +94,7 @@
     background: var(--turf-dim);
     color: #fff;
   }
-  .lens-sub {
+  .weights-caption {
     font-size: 10.5px;
     color: var(--muted2);
     text-align: center;
@@ -331,12 +331,7 @@
   <div class="eyebrow">Fairfield Dynasty League</div>
   <h1>Value Board</h1>
 
-  <div class="lens" role="tablist">
-    <button class="lens-btn" data-lens="rebuild">Rebuild</button>
-    <button class="lens-btn active" data-lens="balanced">Balanced</button>
-    <button class="lens-btn" data-lens="contender">Contender</button>
-  </div>
-  <div class="lens-sub" id="lensSub">production 60 · consistency 18 · age 14 · durability 8</div>
+  <div class="weights-caption">production 65 · consistency 22 · durability 8 · age 5</div>
 
   <div class="searchrow">
     <input class="searchbox" id="search" type="text" placeholder="Search player…" autocomplete="off">
@@ -350,7 +345,7 @@
 
 <footer>
   Dynasty score blends production, age, durability, and week-to-week consistency —<br>
-  weighted by whichever lens is selected above. Tap any player for the breakdown.
+  weighted toward production and consistency. Tap any player for the full breakdown.
 </footer>
 
 <script>
@@ -360,16 +355,9 @@ const PLACEHOLDER_DATA = [];
 <script>
 const DATA = (typeof PLAYERS !== 'undefined') ? PLAYERS : PLACEHOLDER_DATA;
 
-const WEIGHTS = {
-  balanced:  {production:0.60, consistency:0.18, age:0.14, durability:0.08},
-  contender: {production:0.68, consistency:0.18, age:0.06, durability:0.08},
-  rebuild:   {production:0.42, consistency:0.14, age:0.36, durability:0.08},
-};
-const LENS_LABELS = {
-  balanced:  "production 60 · consistency 18 · age 14 · durability 8",
-  contender: "production 68 · consistency 18 · age 6 · durability 8",
-  rebuild:   "production 42 · age 36 · consistency 14 · durability 8",
-};
+// Single fixed weighting -- must match WEIGHTS in 07_build_final_value_board.py.
+// The old Rebuild/Contender lenses are gone; this is one honest ranking.
+const WEIGHTS = {production:0.65, consistency:0.22, durability:0.08, age:0.05};
 
 // Youth curve -- must match YOUTH_CURVE in 07_build_final_value_board.py.
 // Maps a real age to a 0-100 youth score so young players cluster near the
@@ -393,7 +381,6 @@ function youthScoreFromAge(age) {
   return hi[1];
 }
 
-let currentLens = 'balanced';
 let currentPos = 'ALL';
 let currentTeam = '';
 let currentSearch = '';
@@ -448,9 +435,9 @@ DATA.forEach((p, i) => {
   p._hasAll = [p._prodS, p._youthS, p._durS, p._conS].every(v => v !== null && v !== undefined);
 });
 
-function computeScore(p, lens) {
+function computeScore(p) {
   if (!p._hasAll) return null;
-  const w = WEIGHTS[lens];
+  const w = WEIGHTS;
   return p._prodS*w.production + p._youthS*w.age + p._durS*w.durability + p._conS*w.consistency;
 }
 
@@ -490,15 +477,6 @@ POS_ORDER.forEach(pos => {
   chipRow.appendChild(b);
 });
 
-document.querySelectorAll('.lens-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    currentLens = btn.dataset.lens;
-    document.querySelectorAll('.lens-btn').forEach(b => b.classList.toggle('active', b === btn));
-    document.getElementById('lensSub').textContent = LENS_LABELS[currentLens];
-    render();
-  });
-});
-
 document.getElementById('search').addEventListener('input', (e) => {
   currentSearch = e.target.value.trim().toLowerCase();
   render();
@@ -509,6 +487,31 @@ function fmt(v, decimals=1) {
   return Number(v).toFixed(decimals);
 }
 
+// Position-specific context rows shown in the expanded card. Different
+// positions get different relevant metrics -- target share is meaningless
+// for a QB, passing yards meaningless for a WR, etc. IDPs get nothing
+// extra (offensive context doesn't apply, and the league may vote them out).
+function positionContext(p) {
+  const grp = posGroupOf(p.p);
+  const item = (label, val) => (val !== null && val !== undefined && !isNaN(val))
+    ? `<div class="ctxitem">${label} <b>${val}</b></div>` : '';
+  if (grp === 'QB') {
+    return item('Pass yds/game', p.pyg !== null ? fmt(p.pyg, 0) : null)
+         + item('Pass EPA/game', p.pepa !== null ? fmt(p.pepa, 1) : null)
+         + item('Rush yds/game', p.ryg !== null ? fmt(p.ryg, 1) : null);
+  }
+  if (grp === 'RB') {
+    return item('Carries/game', p.cpg !== null ? fmt(p.cpg, 1) : null)
+         + item('Rush yds/game', p.ryg !== null ? fmt(p.ryg, 1) : null)
+         + (p.ts !== null ? item('Target share', fmt(p.ts*100, 1) + '%') : '');
+  }
+  if (grp === 'WR' || grp === 'TE') {
+    return (p.ts !== null ? item('Target share', fmt(p.ts*100, 1) + '%') : '')
+         + item('WOPR', p.wopr !== null ? fmt(p.wopr, 2) : null);
+  }
+  return ''; // IDP: no offensive context
+}
+
 function render() {
   let filtered = DATA.filter(p => {
     if (currentPos !== 'ALL' && posGroup(p) !== currentPos) return false;
@@ -517,7 +520,7 @@ function render() {
     return true;
   });
 
-  filtered.forEach(p => { p._score = computeScore(p, currentLens); });
+  filtered.forEach(p => { p._score = computeScore(p); });
   filtered.sort((a,b) => {
     const as = a._score === null ? -1 : a._score;
     const bs = b._score === null ? -1 : b._score;
@@ -580,7 +583,7 @@ function render() {
           <div class="ctxitem">Real Fairfield PPG <b>${fmt(p.affg)}</b></div>
           <div class="ctxitem">Avg games/yr <b>${fmt(p.dur)}</b></div>
           <div class="ctxitem">Weekly variance <b>${fmt(p.con)}</b></div>
-          ${p.ts !== null ? `<div class="ctxitem">Target share <b>${fmt(p.ts*100,1)}%</b></div>` : ''}
+          ${positionContext(p)}
           ${p.tor !== null ? `<div class="ctxitem">Team offense rank <b>#${p.tor}</b></div>` : ''}
         </div>
       </div>
