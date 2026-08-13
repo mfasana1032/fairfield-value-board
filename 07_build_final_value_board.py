@@ -59,16 +59,15 @@ HISTORY_DIR = DATA_DIR / "history"
 # ============================================================
 # CONFIG -- change freely, then rerun
 # ============================================================
-LENS = "balanced"   # "balanced" | "contender" | "rebuild"
-
-WEIGHT_PRESETS = {
-    # production > consistency > age > durability (durability kept low since it
-    # partly overlaps consistency -- an injury-prone player already loses points
-    # on consistency and production). Must sum to 1.0.
-    "balanced":  {"production": 0.60, "consistency": 0.18, "age": 0.14, "durability": 0.08},
-    "contender": {"production": 0.68, "consistency": 0.18, "age": 0.06, "durability": 0.08},
-    "rebuild":   {"production": 0.42, "consistency": 0.14, "age": 0.36, "durability": 0.08},
-}
+# Single, fixed weighting. The board is now one honest "how good is this
+# player" ranking -- the old Rebuild/Contender lenses are gone, because
+# that contending-vs-rebuilding judgment belongs in the trade tool, not in
+# a raw value ranking. Priority: production dominant, consistency second,
+# durability low (it overlaps consistency -- an injury-prone player already
+# loses points there), age just a light tiebreaker (a 22-yr-old and a
+# 34-yr-old at identical production genuinely aren't equal dynasty assets,
+# but age shouldn't drive the ranking). Must sum to 1.0.
+WEIGHTS = {"production": 0.65, "consistency": 0.22, "durability": 0.08, "age": 0.05}
 
 AGE_REFERENCE_DATE = date(2026, 9, 1)  # roughly the 2026 season start
 
@@ -296,13 +295,11 @@ def compute_weekly_consistency():
 
 
 def main():
-    if LENS not in WEIGHT_PRESETS:
-        raise SystemExit(f"LENS must be one of {list(WEIGHT_PRESETS)} -- got '{LENS}'")
-    weights = WEIGHT_PRESETS[LENS]
+    weights = WEIGHTS
     if abs(sum(weights.values()) - 1.0) > 0.001:
-        raise SystemExit(f"Weights for '{LENS}' must sum to 1.0 -- currently sum to {sum(weights.values())}")
+        raise SystemExit(f"WEIGHTS must sum to 1.0 -- currently sum to {sum(weights.values())}")
 
-    print(f"Using lens: {LENS}  {weights}")
+    print(f"Using weights: {weights}")
 
     # Compute the same dynamic season window used by 02/06, so the season
     # column names checked below (gp_2025, gp_2024, etc.) and the nflverse
@@ -415,9 +412,15 @@ def main():
                 to_float(ctx["rushing_epa_per_game"] or 0) +
                 to_float(ctx["passing_epa_per_game"] or 0), 3
             )
+            row["passing_epa_per_game"] = ctx.get("passing_epa_per_game", "")
+            row["rushing_yards_per_game"] = ctx.get("rushing_yards_per_game", "")
+            row["passing_yards_per_game"] = ctx.get("passing_yards_per_game", "")
+            row["carries_per_game"] = ctx.get("carries_per_game", "")
             row["context_season"] = used_season
         else:
             row["target_share"] = row["air_yards_share"] = row["wopr"] = row["epa_per_game"] = ""
+            row["passing_epa_per_game"] = row["rushing_yards_per_game"] = ""
+            row["passing_yards_per_game"] = row["carries_per_game"] = ""
             row["context_season"] = ""
             if row["position"] not in ("LB", "DB", "DL", "DE", "DT", "CB"):  # IDPs expected to miss offense context
                 unmatched_player_ctx.append(row["player_name"])
@@ -522,7 +525,7 @@ def main():
         w.writerows(board)
 
     print(f"\nSaved {out_path}")
-    print(f"Lens used: {LENS} -- change LENS at the top of this script and rerun to see it differently.")
+    print(f"Weights used: {weights}")
     scored = sum(1 for r in board if r["dynasty_score"] != "")
     print(f"{scored} of {len(board)} players got a full dynasty_score.")
     print(f"({len(board) - scored} were missing age, production, durability, or consistency data --")
