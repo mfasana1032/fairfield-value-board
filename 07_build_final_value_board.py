@@ -69,7 +69,26 @@ HISTORY_DIR = DATA_DIR / "history"
 # but age shouldn't drive the ranking). Must sum to 1.0.
 WEIGHTS = {"production": 0.65, "consistency": 0.22, "durability": 0.08, "age": 0.05}
 
-AGE_REFERENCE_DATE = date(2026, 9, 1)  # roughly the 2026 season start
+def _age_reference_date():
+    """Sept 1 of the league's CURRENT season, read from real league data.
+
+    Was previously hardcoded to date(2026, 9, 1). That silently went stale
+    the moment the league rolled into a new season -- every player's age
+    (and therefore the whole age component of dynasty_score) would be
+    computed a full year young, with nothing visibly failing to warn you.
+    Same class of hardcoded-year bug already fixed in the durability calc
+    and the season window; this closes the last one in the pipeline.
+    """
+    try:
+        with open(DATA_DIR / "league_info.json", "r", encoding="utf-8") as f:
+            return date(int(json.load(f)["season"]), 9, 1)
+    except (OSError, KeyError, ValueError, TypeError):
+        # Fall back to the real current year rather than a frozen literal,
+        # so a missing/malformed league_info can't quietly freeze ages.
+        return date(date.today().year, 9, 1)
+
+
+AGE_REFERENCE_DATE = _age_reference_date()  # roughly the current season's start
 
 # ---- Position-specific youth curves --------------------------------------
 # Youth is NOT scored as a raw 0-100 linear scale, because that made the
@@ -542,6 +561,131 @@ def main():
     print(f"{scored} of {len(board)} players got a full dynasty_score.")
     print(f"({len(board) - scored} were missing age, production, durability, or consistency data --")
     print(" shown in the CSV with their available columns filled in, just no composite score.)")
+
+    # ------------------------------------------------------------
+    # Wide-pool snapshot for historical trade analysis (10_analyze_real_trades.py).
+    #
+    # Real completed trades in league history often involve players who've
+    # since been dropped from every Fairfield roster. board above only holds
+    # CURRENTLY rostered players, so those trades were unscoreable. This
+    # section adds a composite score for every player who has real Fairfield
+    # weekly history (i.e. was rostered at SOME point, even if not now),
+    # WITHOUT touching board's own dynasty_score above -- value_board_FINAL.csv
+    # is completely unaffected by anything below.
+    #
+    # Production and durability are already computed against the full wide
+    # NFL pool earlier in this function (vorp_by_pid, wide_durability) --
+    # board's players and departed players already share that exact scale,
+    # no changes needed there. Age uses the absolute youth curve (never
+    # pool-relative), so it's already the same function for anyone.
+    #
+    # Consistency is the one component that's min-max NORMALIZED rather than
+    # absolute. Simply widening its input pool would shift the 0-100 scale
+    # for CURRENTLY ROSTERED players too, silently making this file disagree
+    # with value_board_FINAL.csv for the same players. Instead, departed
+    # players' raw consistency values are mapped onto the EXACT min/max
+    # bounds board already established, so a currently-rostered player's
+    # number here is identical to value_board_FINAL.csv, and a departed
+    # player who was more/less consistent than anyone currently rostered
+    # can land outside 0-100 (correct -- it means they're off the current
+    # scale, not artificially tied to the most extreme current player).
+    #
+    # A player who was NEVER on a Fairfield roster has no basis for a
+    # composite score under this methodology (no real weekly history to
+    # build consistency from) and is left out of dynasty_score here too --
+    # same "insufficient data" rule board already applies, not a new gap.
+    # ------------------------------------------------------------
+    print("\nBuilding wide-pool snapshot for historical trade analysis...")
+
+    board_pids = {r["player_id"] for r in board}
+    board_cvs = [to_float(r.get("weekly_consistency_cv")) for r in board]
+    board_cvs = [v for v in board_cvs if v is not None]
+    if board_cvs:
+        cv_lo, cv_hi = min(board_cvs), max(board_cvs)
+        cv_span = (cv_hi - cv_lo) or 1.0
+    else:
+        cv_lo = cv_hi = cv_span = None
+
+    def _fixed_con_score(cv):
+        """Same math as min_max_normalize(..., invert=True), but against
+        board's already-fixed lo/hi so board's own numbers never move."""
+        if cv is None or cv_span is None:
+            return None
+        score = (cv - cv_lo) / cv_span * 100
+        return round(100 - score, 1)
+
+    departed = []
+    for r in full_pool:
+        pid = r["player_id"]
+        if pid in board_pids:
+            continue
+        raw_cv = consistency_by_pid.get(pid)
+        if raw_cv is None:
+            continue  # never on a Fairfield roster -- no basis for a score
+        n_years_cv = int(r.get("years_of_data") or 0)
+        cv_confidence = CV_CONFIDENCE.get(n_years_cv, 1.00)
+        blended_cv = pool_mean_cv + (raw_cv - pool_mean_cv) * cv_confidence
+
+        norm_name = normalize_name(r["player_name"])
+        bio = bio_by_name.get(norm_name)
+        age = None
+        if bio and bio.get("birth_date"):
+            try:
+                y, m, d = (int(x) for x in bio["birth_date"].split("-"))
+                age = round((AGE_REFERENCE_DATE - date(y, m, d)).days / 365.25, 1)
+            except (ValueError, TypeError):
+                age = None
+
+        prod = prod_scores.get(pid)
+        dur = dur_scores.get(pid)
+        con = _fixed_con_score(blended_cv)
+        yth = youth_score_from_age(age, position_group(r["position"])) if age is not None else None
+
+        parts = {"production": prod, "age": yth, "durability": dur, "consistency": con}
+        if any(v is None for v in parts.values()):
+            dynasty_score = ""
+        else:
+            dynasty_score = round(sum(parts[k] * weights[k] for k in parts), 1)
+
+        departed.append({
+            "player_id": pid,
+            "player_name": r["player_name"],
+            "position": r["position"],
+            "vorp": round(vorp_by_pid[pid], 4) if vorp_by_pid.get(pid) is not None else "",
+            "dynasty_score": dynasty_score,
+            "weekly_consistency_cv": round(blended_cv, 3),
+            "age": age if age is not None else "",
+            "currently_rostered": False,
+        })
+
+    wide_rows = [
+        {
+            "player_id": r["player_id"],
+            "player_name": r["player_name"],
+            "position": r["position"],
+            "vorp": r.get("vorp", ""),
+            "dynasty_score": r["dynasty_score"],
+            "weekly_consistency_cv": r.get("weekly_consistency_cv", ""),
+            "age": r.get("age", ""),
+            "currently_rostered": True,
+        }
+        for r in board
+    ] + departed
+
+    wide_scored = sum(1 for r in wide_rows if r["dynasty_score"] != "")
+    wide_out_path = DATA_DIR / "value_board_WIDE_POOL.csv"
+    with open(wide_out_path, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=[
+            "player_id", "player_name", "position", "vorp", "dynasty_score",
+            "weekly_consistency_cv", "age", "currently_rostered",
+        ])
+        w.writeheader()
+        w.writerows(wide_rows)
+
+    print(f"Saved {wide_out_path}")
+    print(f"  {len(board)} currently-rostered + {len(departed)} departed-but-once-rostered = {len(wide_rows)} total")
+    print(f"  {wide_scored} of {len(wide_rows)} got a full dynasty_score "
+          f"({len(wide_rows) - wide_scored} missing age/bio data, not enough to compute one)")
 
     if unmatched_player_ctx:
         print(f"\n{len(unmatched_player_ctx)} offensive players had no nflverse usage data found "
