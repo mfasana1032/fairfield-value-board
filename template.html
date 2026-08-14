@@ -650,8 +650,24 @@ function renderSideList(side) {
   });
 }
 
+// A side's TOTAL applies a stacking discount -- pure addition would let
+// several bench-tier throw-ins outweigh one real difference-maker just by
+// piling up count, which isn't how dynasty value actually works (you can
+// only start so many players; extra depth contributes far less than a
+// true starter). The best asset counts fully; each additional one counts
+// for progressively less. This only affects the TOTAL used for comparison
+// -- each asset's own individual displayed value is untouched.
+const STACK_DECAY = [1.00, 0.85, 0.60]; // 1st, 2nd, 3rd asset -- explicit, tuned by feel
+const STACK_TAIL_RATIO = 0.65; // 4th+ assets keep shrinking by this ratio each step
+function stackWeight(rank) {
+  if (rank < STACK_DECAY.length) return STACK_DECAY[rank];
+  let w = STACK_DECAY[STACK_DECAY.length - 1];
+  for (let i = STACK_DECAY.length; i <= rank; i++) w *= STACK_TAIL_RATIO;
+  return w;
+}
 function sideTotal(side) {
-  return sideAssets[side].reduce((sum, a) => sum + assetValue(a), 0);
+  const vals = sideAssets[side].map(a => assetValue(a)).sort((a, b) => b - a); // best asset first
+  return vals.reduce((sum, v, i) => sum + v * stackWeight(i), 0);
 }
 
 const POSITIONS = ['QB','RB','WR','TE','IDP'];
