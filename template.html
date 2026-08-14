@@ -755,16 +755,24 @@ function renderTrade() {
   const bigger = Math.max(totalA, totalB);
   const gapPct = bigger > 0 ? Math.abs(totalA - totalB) / bigger * 100 : 0;
 
-  let label, cls;
-  if (gapPct < 5) { label = 'Even trade'; cls = 'even'; }
-  else if (gapPct < 15) { label = 'Slight edge'; cls = 'slight'; }
-  else if (gapPct < 30) { label = 'Clear winner'; cls = 'clear'; }
-  else { label = 'Lopsided'; cls = 'lopsided'; }
+  // Two tiers, not four -- graduated labels like "Clear winner" read as
+  // dramatic as "Lopsided" in plain English, and in a real friend-group
+  // league, having the tool publicly declare a "winner" on every mildly
+  // uneven trade creates friction over completely normal trade variance.
+  // 45% is the same real threshold established from stress-testing real
+  // trades (2 good players for 1 elite player lands ~40-43% and should
+  // stay "Fair" -- that's a strong outcome, not robbery; the truly
+  // one-sided cases start above that cluster).
+  const isLopsided = gapPct >= 45;
+  const label = isLopsided ? 'Lopsided' : 'Fair trade';
+  const cls = isLopsided ? 'lopsided' : 'even';
 
   const winnerLabel = document.getElementById('teamA').value || 'Team A';
   const loserLabel = document.getElementById('teamB').value || 'Team B';
+  // Only name a favored side when it's actually lopsided -- a Fair trade
+  // doesn't need the tool taking a side on normal give-and-take.
   let who = '';
-  if (gapPct >= 5) {
+  if (isLopsided) {
     who = gainA > 0 ? ` — favors ${winnerLabel}` : ` — favors ${loserLabel}`;
   }
 
