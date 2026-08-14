@@ -763,7 +763,16 @@ function renderTrade() {
   // trades (2 good players for 1 elite player lands ~40-43% and should
   // stay "Fair" -- that's a strong outcome, not robbery; the truly
   // one-sided cases start above that cluster).
-  const isLopsided = gapPct >= 45;
+  // 42% (not 45%) -- refined after deeper stress-testing showed WHY: a
+  // controlled test varying the single player's real quality premium over
+  // the pair showed genuinely elite-premium 2-for-1s (10-15% real premium,
+  // e.g. 2 good players for 1 clearly superior one) cluster at 38-41% gap,
+  // while SAME-TIER 2-for-1s (giving up an extra comparable-value asset
+  // for nothing extra back -- no real premium) cluster at 43-46%. 45% sat
+  // above BOTH clusters, wrongly calling same-tier overpays "Fair." 42%
+  // sits between them: keeps genuine premium trades Fair, correctly flags
+  // same-tier asset-count swaps as Lopsided.
+  const isLopsided = gapPct >= 42;
   const label = isLopsided ? 'Lopsided' : 'Fair trade';
   const cls = isLopsided ? 'lopsided' : 'even';
 
