@@ -22,7 +22,7 @@ BEFORE RUNNING:
 
 import csv
 import json
-import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -92,8 +92,24 @@ def main():
     with open(SITE_DIR / "players_data.js", "w", encoding="utf-8") as f:
         f.write(data_js)
 
-    print("Copying template.html -> site/index.html...")
-    shutil.copy(TEMPLATE_PATH, SITE_DIR / "index.html")
+    # ------------------------------------------------------------
+    # Copy the template, but tag the data script references with a
+    # version string unique to THIS run. Browsers cache a file like
+    # "picks_data.js" aggressively and can keep reusing an old copy
+    # even after the real one on the server changes -- happened for
+    # real during testing. Requesting "picks_data.js?v=<timestamp>"
+    # instead means every weekly deploy is a genuinely new URL as far
+    # as the browser is concerned, so there's no stale copy to ever
+    # accidentally serve. No manual cache-clearing ever needed again.
+    # ------------------------------------------------------------
+    version_tag = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    print(f"Copying template.html -> site/index.html (cache-busted as v={version_tag})...")
+    with open(TEMPLATE_PATH, "r", encoding="utf-8") as f:
+        html = f.read()
+    html = html.replace('src="players_data.js"', f'src="players_data.js?v={version_tag}"')
+    html = html.replace('src="picks_data.js"', f'src="picks_data.js?v={version_tag}"')
+    with open(SITE_DIR / "index.html", "w", encoding="utf-8") as f:
+        f.write(html)
 
     # ------------------------------------------------------------
     # Pick values (optional -- the trade builder tab just shows an
