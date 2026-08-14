@@ -71,41 +71,46 @@ WEIGHTS = {"production": 0.65, "consistency": 0.22, "durability": 0.08, "age": 0
 
 AGE_REFERENCE_DATE = date(2026, 9, 1)  # roughly the 2026 season start
 
-# ---- Youth curve --------------------------------------------------------
+# ---- Position-specific youth curves --------------------------------------
 # Youth is NOT scored as a raw 0-100 linear scale, because that made the
 # single youngest player a runaway 100 and turned "being 22 instead of 24"
 # into a huge, football-irrelevant score swing. Instead, age maps to a
-# youth score through an explicit curve tuned to the real age distribution
-# (almost everyone is 22-33): young players cluster near the top with only
-# small gaps between them, and the score only drops meaningfully as players
-# age into real dynasty decline. Anchors are (age, youth_score); anything
-# between anchors is linearly interpolated, and anything outside is clamped.
-YOUTH_CURVE = [
-    (22.0, 100.0),
-    (24.0, 92.0),
-    (25.0, 88.0),
-    (27.0, 74.0),
-    (28.0, 62.0),
-    (29.0, 50.0),
-    (30.0, 40.0),
-    (31.0, 30.0),
-    (32.0, 22.0),
-    (34.0, 12.0),
-    (37.0, 6.0),
-]
+# youth score through an explicit curve, and the SHAPE of that curve is
+# position-specific -- a universal curve was treating a 31-year-old QB the
+# same as a 31-year-old RB, which is wrong for a well-established, real
+# reason: RBs have a notoriously short shelf life (the "RB cliff" around
+# age 27-28 is common dynasty knowledge, driven by real injury/workload
+# data), while QBs routinely stay effective into their late 30s. WR/TE
+# decline more gracefully than RB but not as gracefully as QB. IDP keeps
+# the original general-purpose curve, since there's less clear positional
+# consensus there. Anchors are (age, youth_score); interpolated linearly
+# between points, clamped at both ends.
+YOUTH_CURVES = {
+    "RB": [(22.0,100.0),(24.0,90.0),(25.0,80.0),(26.0,68.0),(27.0,54.0),
+           (28.0,40.0),(29.0,28.0),(30.0,18.0),(32.0,8.0)],
+    "QB": [(22.0,100.0),(26.0,95.0),(29.0,90.0),(32.0,80.0),(34.0,68.0),
+           (36.0,52.0),(38.0,35.0),(40.0,20.0),(42.0,10.0)],
+    "WR": [(22.0,100.0),(24.0,93.0),(26.0,85.0),(28.0,73.0),(29.0,63.0),
+           (30.0,53.0),(31.0,43.0),(33.0,26.0),(35.0,12.0)],
+    "TE": [(22.0,96.0),(24.0,92.0),(26.0,86.0),(28.0,76.0),(30.0,62.0),
+           (31.0,53.0),(32.0,44.0),(34.0,28.0),(36.0,14.0)],
+    "IDP": [(22.0,100.0),(24.0,92.0),(25.0,88.0),(27.0,74.0),(28.0,62.0),
+            (29.0,50.0),(30.0,40.0),(31.0,30.0),(32.0,22.0),(34.0,12.0),(37.0,6.0)],
+}
 
-def youth_score_from_age(age):
-    """Map a real age to a 0-100 youth score via the YOUTH_CURVE (piecewise
-    linear, clamped at both ends). Returns None if age is missing."""
+def youth_score_from_age(age, pos_group):
+    """Map a real age to a 0-100 youth score via that position's curve
+    (piecewise linear, clamped at both ends). Returns None if age is missing."""
     if age is None:
         return None
-    lo_age, lo_score = YOUTH_CURVE[0]
-    hi_age, hi_score = YOUTH_CURVE[-1]
+    curve = YOUTH_CURVES.get(pos_group, YOUTH_CURVES["IDP"])
+    lo_age, lo_score = curve[0]
+    hi_age, hi_score = curve[-1]
     if age <= lo_age:
         return lo_score
     if age >= hi_age:
         return hi_score
-    for (a1, s1), (a2, s2) in zip(YOUTH_CURVE, YOUTH_CURVE[1:]):
+    for (a1, s1), (a2, s2) in zip(curve, curve[1:]):
         if a1 <= age <= a2:
             frac = (age - a1) / (a2 - a1)
             return round(s1 + frac * (s2 - s1), 1)
@@ -194,11 +199,15 @@ N_SUPERFLEX = 1     # SUPER_FLEX slots per team (QB/RB/WR/TE eligible)
 # starter demand. This IS a documented assumption (there's no way to know
 # in advance exactly how often a flex slot goes to an RB vs a WR vs a QB2)
 # -- shown here rather than hidden, and easy to adjust if your league's
-# actual flex usage looks different. Default reflects common usage: FLEX
-# mostly goes to RB/WR, SUPER_FLEX mostly goes to a second QB.
+# actual flex usage looks different. FLEX mostly goes to RB/WR. SUPER_FLEX
+# is credited mostly to QB (0.90, not a lighter 0.70) because in a real
+# 4pt-passing-TD superflex league, that slot is filled by a QB in the
+# large majority of competitive weeks -- a mediocre starter usually
+# outscores a non-elite RB/WR/TE flex option. Under-crediting this was
+# flattening how much real separation elite QBs got in VORP.
 FLEX_ALLOCATION = {
     "FLEX": {"RB": 0.45, "WR": 0.45, "TE": 0.10},
-    "SUPER_FLEX": {"QB": 0.70, "RB": 0.15, "WR": 0.15},
+    "SUPER_FLEX": {"QB": 0.90, "RB": 0.05, "WR": 0.05},
 }
 
 
@@ -493,7 +502,10 @@ def main():
     prod_scores = min_max_normalize(vorp_by_pid)
     # dur_scores already computed above from the full wide pool
     con_scores = min_max_normalize({r["player_id"]: to_float(r.get("weekly_consistency_cv")) for r in board}, invert=True)
-    youth_scores = {r["player_id"]: youth_score_from_age(to_float(r.get("age"))) for r in board}
+    youth_scores = {
+        r["player_id"]: youth_score_from_age(to_float(r.get("age")), position_group(r["position"]))
+        for r in board
+    }
 
     for row in board:
         pid = row["player_id"]
