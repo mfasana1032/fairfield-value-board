@@ -767,20 +767,23 @@ function renderTrade() {
   // dramatic as "Lopsided" in plain English, and in a real friend-group
   // league, having the tool publicly declare a "winner" on every mildly
   // uneven trade creates friction over completely normal trade variance.
-  // 45% is the same real threshold established from stress-testing real
-  // trades (2 good players for 1 elite player lands ~40-43% and should
-  // stay "Fair" -- that's a strong outcome, not robbery; the truly
-  // one-sided cases start above that cluster).
-  // 42% (not 45%) -- refined after deeper stress-testing showed WHY: a
-  // controlled test varying the single player's real quality premium over
-  // the pair showed genuinely elite-premium 2-for-1s (10-15% real premium,
-  // e.g. 2 good players for 1 clearly superior one) cluster at 38-41% gap,
-  // while SAME-TIER 2-for-1s (giving up an extra comparable-value asset
-  // for nothing extra back -- no real premium) cluster at 43-46%. 45% sat
-  // above BOTH clusters, wrongly calling same-tier overpays "Fair." 42%
-  // sits between them: keeps genuine premium trades Fair, correctly flags
-  // same-tier asset-count swaps as Lopsided.
-  const isLopsided = gapPct >= 42;
+  //
+  // 45% -- calibrated against 19 real completed trades from this league's
+  // actual Sleeper history (10_analyze_trades.py), not synthetic examples.
+  // Real trades cluster into two clean groups with a genuine empty zone
+  // between them: "Fair" trades run 1.1%-42.3% gap, "Lopsided" ones start
+  // at 55.9%. 45% sits inside that empty zone.
+  // The boundary case that set it: a QB1 + a future 1st traded for a true
+  // top-3 rookie pick (1.03) scored 42.3% gap -- real football judgment
+  // says that's a fair aggressive move for a premium pick, not a fleecing,
+  // so the threshold needed to sit above it. Every value from 43%-55%
+  // classifies the real 19 trades identically, so 45% isn't a knife-edge
+  // choice -- it's the point in that stable range closest to the old
+  // (synthetic-trade-derived) 42%.
+  // Caveat: n=19 is small. A bootstrap resample of these trades put the
+  // Lopsided share's 95% range at roughly 10%-47% -- directionally solid,
+  // not precise. Revisit once real trade history is deeper (40+ trades).
+  const isLopsided = gapPct >= 45;
   const label = isLopsided ? 'Lopsided' : 'Fair trade';
   const cls = isLopsided ? 'lopsided' : 'even';
 
