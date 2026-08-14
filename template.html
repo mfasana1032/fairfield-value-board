@@ -310,19 +310,29 @@
 <script>
 const DATA = (typeof PLAYERS !== 'undefined') ? PLAYERS : [];
 const PICKDATA = (typeof PICKS !== 'undefined') ? PICKS : [];
+const IDP_POS = new Set(['LB','DB','DL','DE','DT','CB','S']);
+function posGroupOf(pos) { return IDP_POS.has(pos) ? 'IDP' : (pos || 'UNK'); }
 
 const WEIGHTS = {production:0.65, consistency:0.22, durability:0.08, age:0.05};
-const YOUTH_CURVE = [
-  [22.0,100.0],[24.0,92.0],[25.0,88.0],[27.0,74.0],[28.0,62.0],
-  [29.0,50.0],[30.0,40.0],[31.0,30.0],[32.0,22.0],[34.0,12.0],[37.0,6.0]
-];
-function youthScoreFromAge(age) {
+// Position-specific age curves -- must match YOUTH_CURVES in
+// 07_build_final_value_board.py exactly. RB declines earliest/steepest
+// (the real "RB cliff" around 27-28), QB ages most gracefully, WR/TE in
+// between, IDP keeps the original general-purpose curve.
+const YOUTH_CURVES = {
+  RB: [[22,100],[24,90],[25,80],[26,68],[27,54],[28,40],[29,28],[30,18],[32,8]],
+  QB: [[22,100],[26,95],[29,90],[32,80],[34,68],[36,52],[38,35],[40,20],[42,10]],
+  WR: [[22,100],[24,93],[26,85],[28,73],[29,63],[30,53],[31,43],[33,26],[35,12]],
+  TE: [[22,96],[24,92],[26,86],[28,76],[30,62],[31,53],[32,44],[34,28],[36,14]],
+  IDP:[[22,100],[24,92],[25,88],[27,74],[28,62],[29,50],[30,40],[31,30],[32,22],[34,12],[37,6]],
+};
+function youthScoreFromAge(age, posGroup) {
   if (age === null || age === undefined || isNaN(age)) return null;
-  const lo = YOUTH_CURVE[0], hi = YOUTH_CURVE[YOUTH_CURVE.length-1];
+  const curve = YOUTH_CURVES[posGroup] || YOUTH_CURVES.IDP;
+  const lo = curve[0], hi = curve[curve.length-1];
   if (age <= lo[0]) return lo[1];
   if (age >= hi[0]) return hi[1];
-  for (let i=0; i<YOUTH_CURVE.length-1; i++) {
-    const [a1,s1] = YOUTH_CURVE[i], [a2,s2] = YOUTH_CURVE[i+1];
+  for (let i=0; i<curve.length-1; i++) {
+    const [a1,s1] = curve[i], [a2,s2] = curve[i+1];
     if (age >= a1 && age <= a2) { const frac=(age-a1)/(a2-a1); return Math.round((s1+frac*(s2-s1))*10)/10; }
   }
   return hi[1];
@@ -343,7 +353,7 @@ function normalizeGlobal(getVal, invert) {
   return out;
 }
 const prodScore = normalizeGlobal(p=>p.prod,false);
-const youthScore = {}; DATA.forEach((p,i)=>{youthScore[i]=youthScoreFromAge(p.age);});
+const youthScore = {}; DATA.forEach((p,i)=>{youthScore[i]=youthScoreFromAge(p.age, posGroupOf(p.p));});
 const durScore = normalizeGlobal(p=>p.dur,false);
 const conScore = normalizeGlobal(p=>p.con,true);
 DATA.forEach((p,i)=>{
@@ -352,8 +362,6 @@ DATA.forEach((p,i)=>{
   p._score = p._hasAll ? (p._prodS*WEIGHTS.production + p._youthS*WEIGHTS.age + p._durS*WEIGHTS.durability + p._conS*WEIGHTS.consistency) : null;
 });
 
-const IDP_POS = new Set(['LB','DB','DL','DE','DT','CB','S']);
-function posGroupOf(pos) { return IDP_POS.has(pos) ? 'IDP' : (pos || 'UNK'); }
 function posGroup(p) { return posGroupOf(p.p); }
 function tierFor(score) {
   if (score === null) return 'none';
