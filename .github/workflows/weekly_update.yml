@@ -2,13 +2,14 @@ name: Weekly Value Board Update
 
 on:
   schedule:
-    - cron: "0 12 * * 2"
+    - cron: "23 11 * * 2"
   workflow_dispatch: {}
 
 permissions:
   contents: read
   pages: write
   id-token: write
+  actions: write
 
 concurrency:
   group: "pages"
